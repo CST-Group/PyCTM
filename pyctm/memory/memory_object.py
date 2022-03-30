@@ -1,7 +1,8 @@
 from pyctm.memory.memory import Memory
 
+
 class MemoryObject(Memory):
-    
+
     def __init__(self, id=0, name="", I=None, evaluation=0):
         self.id = id
         self.name = name
@@ -10,7 +11,7 @@ class MemoryObject(Memory):
 
     def get_i(self):
         return self.I
-    
+
     def get_name(self):
         return self.name
 
@@ -22,7 +23,7 @@ class MemoryObject(Memory):
 
     def set_i(self, I):
         self.I = I
-    
+
     def set_name(self, name):
         self.name = name
 
@@ -36,10 +37,3 @@ class MemoryObject(Memory):
 
     def set_id(self, id):
         self.id = id
-
-    
-if __name__ == '__main__':
-
-    memoryObject = MemoryObject(1, "test", 10, 1)
-
-    print(memoryObject.get_i())

@@ -7,13 +7,13 @@ import time
 
 class Codelet(Thread):
     def __init__(self, name):
-        
+
         self.activation = 0
         self.threshold = 0
         self.name = name
         self.enabled = True
         self.timestep = 300
-        
+
         self.inputs = []
         self.outputs = []
         self.broadcast = []
@@ -22,7 +22,7 @@ class Codelet(Thread):
         pass
 
     def run(self):
-        
+
         while self.enabled:
             self.proc()
             time.sleep(self.timestep)
@@ -32,7 +32,6 @@ class Codelet(Thread):
 
     def add_output(self, output):
         self.outputs.append(output)
-
 
     def get_activation(self):
         return self.activation
@@ -45,7 +44,7 @@ class Codelet(Thread):
             self.activation = 0
         else:
             self.activation = activation
-    
+
     def get_inputs(self):
         return self.inputs
 
