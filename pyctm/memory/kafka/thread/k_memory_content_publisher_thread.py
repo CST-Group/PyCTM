@@ -1,4 +1,3 @@
-
 import json
 from threading import Thread
 import time
@@ -17,9 +16,12 @@ class KMemoryContentPublisherThread(Thread):
 
     def run(self):
 
+        print('Content publisher thread initialized for memory %s.' % self.memory.get_name())
+
         while True:
-            if self.topic_config.distributed_memory_type == KDistributedMemoryBehavior.TRIGGERED:               
-                
+            if self.topic_config.distributed_memory_type == KDistributedMemoryBehavior.TRIGGERED:
+                self.memory.condition.wait()
+
                 object_json = json.dump(self.memory.__dict__)
 
                 self.producer.poll(10)
@@ -31,7 +33,7 @@ class KMemoryContentPublisherThread(Thread):
 
                     self.producer.poll(10)
                     self.producer.produce(self.topic_config.name, object_json)
-                    
+
                     self.last_evaluation = self.memory.get_evaluation()
                     self.last_i = self.memory.get_i()
 

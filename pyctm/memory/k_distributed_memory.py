@@ -1,7 +1,6 @@
-
-
 from pyctm.memory.distributed_memory_type import DistributedMemoryType
 from pyctm.memory.kafka.builder.k_producer_builder import KProducerBuilder
+from pyctm.memory.kafka.thread.k_memory_content_publisher_thread import KMemoryContentPublisherThread
 from pyctm.memory.memory import Memory
 from pyctm.memory.kafka.builder.k_consumer_builder import KConsumerBuilder
 from pyctm.memory.memory_object import MemoryObject
@@ -11,11 +10,6 @@ from pyctm.memory.kafka.thread.k_memory_content_receiver_thread import KMemoryCo
 class KDistributedMemory(Memory):
 
     def __init__(self, name="", distributed_memory_type=DistributedMemoryType.INPUT_MEMORY, topics_config=[]):
-
-        self.memory_setup(name, distributed_memory_type, topics_config)
-
-    def memory_setup(self, name, distributed_memory_type, topics_config):
-
         self.name = name
         self.distributed_memory_type = distributed_memory_type
         self.topics_config = topics_config
@@ -33,7 +27,8 @@ class KDistributedMemory(Memory):
 
     def init_memory(self):
 
-        if self.distributed_memory_type == 'INPUT_MEMORY' or self.distributed_memory_type == 'BROADCAST_MEMORY':
+        if self.distributed_memory_type == DistributedMemoryType.INPUT_MEMORY \
+                or self.distributed_memory_type == DistributedMemoryType.INPUT_BROADCAST_MEMORY:
             self.consumers_setup(self.topics_config)
         else:
             self.producers_setup(self.topics_config)
@@ -45,7 +40,6 @@ class KDistributedMemory(Memory):
             topics_config, self.name)
 
         for topic_config, consumer in topics_consumer_map.items():
-
             memory = MemoryObject(0, topic_config.name)
             self.memories.append(memory)
 
@@ -61,7 +55,7 @@ class KDistributedMemory(Memory):
     def producers_setup(self, topics_config):
         print('Creating the producers.')
 
-        producers = KProducerBuilder.generateProducers(topics_config)
+        producers = KProducerBuilder.generate_producers(topics_config)
 
         for (producer, topic_config) in zip(producers, topics_config):
             memory = MemoryObject(0, topic_config.name)
@@ -74,4 +68,60 @@ class KDistributedMemory(Memory):
 
         print('Producers created.')
 
+    def get_i(self):
+        memory = max(self.memories, key=lambda m: m.get_i())
+        return memory.get_evaluation()
 
+    def get_i(self, index):
+        try:
+            return self.memories[index]
+        except IndexError:
+            print('Impossible to get memory content. Index %s out of bounds.' % index)
+            return None
+
+    def get_memory(self):
+        return max(self.memories, key=lambda memory: memory.get_i())
+
+    def set_i(self, i):
+        try:
+            self.memories[0].set_i(i)
+        except IndexError:
+            print('Impossible to set memory content. Index 0 out of bounds.')
+
+    def set_i(self, i, index):
+        try:
+            self.memories[index].set_i(i)
+        except IndexError:
+            print('Impossible to get memory content. Index %s out of bounds.' % index)
+
+    def set_i(self, i, evaluation, index):
+        try:
+            self.memories[index].set_i(i)
+            self.memories[index].set_evaluation(evaluation)
+        except IndexError:
+            print('Impossible to get memory content. Index %s out of bounds.' % index)
+
+    def get_evaluation(self):
+        memory = max(self.memories, key=lambda m: m.get_i())
+        if memory is not None:
+            return memory.get_evaluation()
+
+        return -1
+
+    def set_evaluation(self, evaluation):
+        try:
+            self.memories[0].set_evaluation(evaluation)
+        except IndexError:
+            print('Impossible to get memory content. Index 0 out of bounds.')
+
+    def set_evaluation(self, evaluation, index):
+        try:
+            self.memories[index].set_evaluation(evaluation)
+        except IndexError:
+            print('Impossible to get memory content. Index %s out of bounds.' % index)
+
+    def get_name(self):
+        return self.name
+
+    def set_name(self, name):
+        self.name = name

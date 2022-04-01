@@ -1,8 +1,7 @@
 from confluent_kafka import Producer
-from memory.kafka.topic_config_provider import TopicConfigProvider
 
 
-class KProducerBuilder():
+class KProducerBuilder:
 
     @staticmethod
     def build_producer(broker):
@@ -11,11 +10,10 @@ class KProducerBuilder():
 
     @staticmethod
     def generate_producers(topic_configs):
-
         producers = []
 
         for topic_config in topic_configs:
-            print('Creating producer for topic configuration - Name: %s - Broker: %s - Class: %s - Behavior Type: %s',
+            print('Creating producer for topic configuration - Name: %s - Broker: %s - Class: %s - Behavior Type: %s' %
                   (topic_config.name,
                    topic_config.broker,
                    topic_config.class_name,

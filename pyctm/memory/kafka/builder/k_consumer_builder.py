@@ -1,8 +1,9 @@
 from confluent_kafka import Consumer
-from memory.kafka.topic_config_provider import TopicConfigProvider
+
+from pyctm.memory.kafka.topic_config_provider import TopicConfigProvider
 
 
-class KConsumerBuilder():
+class KConsumerBuilder:
 
     @staticmethod
     def build_consumer(broker, consumer_group_id, topic):
@@ -45,7 +46,8 @@ class KConsumerBuilder():
                 return
 
             print('Creating consumer for topic configuration - Name: %s - Broker: %s - Class: %s - Behavior Type: %s'
-                  % (topic_config.name, topic_config.broker, topic_config.class_name, topic_config.k_distributed_memory_behavior))
+                  % (topic_config.name, topic_config.broker, topic_config.class_name,
+                     topic_config.k_distributed_memory_behavior))
 
             consumer = KConsumerBuilder.build_consumer(
                 topic_config.broker, consumer_group_id, topic_config)

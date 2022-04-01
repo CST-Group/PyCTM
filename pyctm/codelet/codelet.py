@@ -12,7 +12,7 @@ class Codelet(Thread):
         self.threshold = 0
         self.name = name
         self.enabled = True
-        self.timestep = 300
+        self.timestamp = 300
 
         self.inputs = []
         self.outputs = []
@@ -25,7 +25,7 @@ class Codelet(Thread):
 
         while self.enabled:
             self.proc()
-            time.sleep(self.timestep)
+            time.sleep(self.timestamp)
 
     def add_input(self, input):
         self.inputs.append(input)

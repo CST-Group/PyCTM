@@ -4,7 +4,7 @@ from pyctm.memory.kafka.config.topic_config import TopicConfig
 from pyctm.memory.kafka.k_distributed_memory_behavior import KDistributedMemoryBehavior
 
 
-class TopicConfigProvider():
+class TopicConfigProvider:
 
     @staticmethod
     def generate_topic_configs_regex_pattern(broker, regex_pattern, class_name):

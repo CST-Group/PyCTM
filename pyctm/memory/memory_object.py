@@ -1,16 +1,18 @@
+import threading
 from pyctm.memory.memory import Memory
 
 
 class MemoryObject(Memory):
 
-    def __init__(self, id=0, name="", I=None, evaluation=0):
+    def __init__(self, id=0, name="", i=None, evaluation=0):
         self.id = id
         self.name = name
-        self.I = I
-        self.set_evaluation(evaluation)
+        self.i = i
+        self.evaluation = 0
+        self.condition = threading.Condition()
 
     def get_i(self):
-        return self.I
+        return self.i
 
     def get_name(self):
         return self.name
@@ -21,8 +23,9 @@ class MemoryObject(Memory):
     def get_id(self):
         return self.id
 
-    def set_i(self, I):
-        self.I = I
+    def set_i(self, i):
+        self.i = i
+        self.condition.notifyAll()
 
     def set_name(self, name):
         self.name = name
@@ -34,6 +37,8 @@ class MemoryObject(Memory):
             self.evaluation = 0
         else:
             self.evaluation = evaluation
+
+        self.condition.notifyAll()
 
     def set_id(self, id):
         self.id = id

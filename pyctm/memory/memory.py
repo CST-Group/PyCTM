@@ -1,18 +1,18 @@
 class Memory:
 
-    def get_i() -> object:
+    def get_i(self) -> object:
         pass
 
-    def get_name() -> str:
+    def get_name(self) -> str:
         pass
 
-    def get_evaluation() -> float:
+    def get_evaluation(self) -> float:
         pass
 
-    def get_id() -> str:
+    def get_id(self) -> str:
         pass
 
-    def set_i(self, I) -> None:
+    def set_i(self, i) -> None:
         pass
 
     def set_name(self, name) -> None:
