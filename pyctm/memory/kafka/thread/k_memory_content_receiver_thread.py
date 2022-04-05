@@ -7,6 +7,7 @@ import time
 class KMemoryContentReceiverThread(Thread):
 
     def __init__(self, memory=None, consumer=None, topic_config=None):
+        Thread.__init__(self)
         self.memory = memory
         self.consumer = consumer
         self.topic_config = topic_config
@@ -22,9 +23,8 @@ class KMemoryContentReceiverThread(Thread):
                 print('Consumer error: %s' % message.error())
 
             j = json.loads(message.value().decode('utf-8'))
-            memory = Memory(**j)
 
-            self.memory.set_evaluation(memory.get_evaluation())
-            self.memory.set_i(memory.get_i())
+            self.memory.set_evaluation(j["evaluation"])
+            self.memory.set_i(j["i"])
 
             time.sleep(0.01)

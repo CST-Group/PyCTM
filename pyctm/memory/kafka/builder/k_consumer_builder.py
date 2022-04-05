@@ -1,4 +1,6 @@
 from confluent_kafka import Consumer
+from confluent_kafka.admin import AdminClient
+from confluent_kafka.cimpl import NewTopic
 
 from pyctm.memory.kafka.topic_config_provider import TopicConfigProvider
 
@@ -6,16 +8,27 @@ from pyctm.memory.kafka.topic_config_provider import TopicConfigProvider
 class KConsumerBuilder:
 
     @staticmethod
-    def build_consumer(broker, consumer_group_id, topic):
+    def build_consumer(broker, consumer_group_id, topic_config):
+
+        KConsumerBuilder.check_topic_exist(broker, topic_config.name)
+
         consumer = Consumer({
             'bootstrap.servers': broker,
             'group.id': consumer_group_id,
             'auto.offset.reset': 'earliest'
         })
 
-        consumer.subscribe([topic])
+        consumer.subscribe([topic_config.name])
 
         return consumer
+
+    @staticmethod
+    def check_topic_exist(broker, topic):
+        kafka_admin = AdminClient({"bootstrap.servers": broker})
+        topic_metadata = kafka_admin.list_topics()
+        if topic_metadata.topics.get(topic) is None:
+            new_kafka_topic = NewTopic(topic, num_partitions=1, replication_factor=1)
+            kafka_admin.create_topics([new_kafka_topic])
 
     @staticmethod
     def generate_consumers(topic_configs, consumer_group_id):

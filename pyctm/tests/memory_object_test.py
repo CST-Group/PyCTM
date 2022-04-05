@@ -1,11 +1,16 @@
+import time
 import unittest
 from pyctm.memory import memory_object
+from pyctm.memory.distributed_memory_type import DistributedMemoryType
+from pyctm.memory.k_distributed_memory import KDistributedMemory
+from pyctm.memory.kafka.config.topic_config import TopicConfig
+from pyctm.memory.kafka.k_distributed_memory_behavior import KDistributedMemoryBehavior
 
 # from pyctm.memory.memory import MemoryObject
 from pyctm.memory.memory_object import MemoryObject
 
 
-class MemoryTest(unittest.TestCase):
+class MemoryObjectTest(unittest.TestCase):
 
     def test_memory_initialization(self):
         memoryObject = MemoryObject(1, "test", 10, 1)

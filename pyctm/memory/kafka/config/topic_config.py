@@ -3,7 +3,7 @@ from pyctm.memory.kafka.k_distributed_memory_behavior import KDistributedMemoryB
 
 class TopicConfig:
 
-    def __init__(self, name, broker, k_distributed_memory_behavior=KDistributedMemoryBehavior.PULLED,
+    def __init__(self, broker, name, k_distributed_memory_behavior=KDistributedMemoryBehavior.PULLED,
                  regex_pattern=None, class_name=None) -> None:
         self.name = name
         self.k_distributed_memory_behavior = k_distributed_memory_behavior

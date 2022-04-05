@@ -72,7 +72,7 @@ class KDistributedMemory(Memory):
         memory = max(self.memories, key=lambda m: m.get_i())
         return memory.get_evaluation()
 
-    def get_i(self, index):
+    def get_i_index(self, index):
         try:
             return self.memories[index]
         except IndexError:
@@ -88,13 +88,13 @@ class KDistributedMemory(Memory):
         except IndexError:
             print('Impossible to set memory content. Index 0 out of bounds.')
 
-    def set_i(self, i, index):
+    def set_i_index(self, i, index):
         try:
             self.memories[index].set_i(i)
         except IndexError:
             print('Impossible to get memory content. Index %s out of bounds.' % index)
 
-    def set_i(self, i, evaluation, index):
+    def set_i_evaluation_index(self, i, evaluation, index):
         try:
             self.memories[index].set_i(i)
             self.memories[index].set_evaluation(evaluation)
@@ -114,7 +114,7 @@ class KDistributedMemory(Memory):
         except IndexError:
             print('Impossible to get memory content. Index 0 out of bounds.')
 
-    def set_evaluation(self, evaluation, index):
+    def set_evaluation_index(self, evaluation, index):
         try:
             self.memories[index].set_evaluation(evaluation)
         except IndexError:

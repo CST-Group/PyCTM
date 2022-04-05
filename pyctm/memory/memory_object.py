@@ -8,8 +8,8 @@ class MemoryObject(Memory):
         self.id = id
         self.name = name
         self.i = i
-        self.evaluation = 0
-        self.condition = threading.Condition()
+        self.locked = False
+        self.set_evaluation(evaluation)
 
     def get_i(self):
         return self.i
@@ -25,7 +25,9 @@ class MemoryObject(Memory):
 
     def set_i(self, i):
         self.i = i
-        self.condition.notifyAll()
+
+        if self.locked:
+            self.locked = False
 
     def set_name(self, name):
         self.name = name
@@ -38,7 +40,8 @@ class MemoryObject(Memory):
         else:
             self.evaluation = evaluation
 
-        self.condition.notifyAll()
+        if self.locked:
+            self.locked = False
 
     def set_id(self, id):
         self.id = id
