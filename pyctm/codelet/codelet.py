@@ -1,13 +1,11 @@
 from threading import Thread
 
-from pyctm.memory.memory import Memory
-
 import time
 
 
 class Codelet(Thread):
     def __init__(self, name):
-
+        Thread.__init__()
         self.activation = 0
         self.threshold = 0
         self.name = name
