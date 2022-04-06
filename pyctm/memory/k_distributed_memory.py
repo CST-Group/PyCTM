@@ -1,3 +1,5 @@
+import threading
+
 from pyctm.memory.distributed_memory_type import DistributedMemoryType
 from pyctm.memory.kafka.builder.k_producer_builder import KProducerBuilder
 from pyctm.memory.kafka.thread.k_memory_content_publisher_thread import KMemoryContentPublisherThread
@@ -20,6 +22,8 @@ class KDistributedMemory(Memory):
         self.memories = []
         self.k_memory_content_receiver_threads = []
         self.k_memory_content_publisher_threads = []
+
+        self.condition = threading.Condition()
 
         self.init_memory()
 
@@ -61,12 +65,21 @@ class KDistributedMemory(Memory):
             memory = MemoryObject(0, topic_config.name)
             self.memories.append(memory)
 
-            k_memory_content_publisher_thread = KMemoryContentPublisherThread(memory, producer, topic_config)
+            k_memory_content_publisher_thread = KMemoryContentPublisherThread(memory, producer, topic_config,
+                                                                              self.condition)
             k_memory_content_publisher_thread.start()
 
             self.k_memory_content_publisher_threads.append(k_memory_content_publisher_thread)
 
         print('Producers created.')
+
+    def stop(self):
+        for k_thread in self.k_memory_content_receiver_threads:
+            k_thread.stop()
+
+        for k_thread in self.k_memory_content_publisher_threads:
+            k_thread.stop()
+
 
     def get_i(self):
         memory = max(self.memories, key=lambda m: m.get_i())
@@ -84,22 +97,34 @@ class KDistributedMemory(Memory):
 
     def set_i(self, i):
         try:
+            self.condition.acquire()
             self.memories[0].set_i(i)
+            self.condition.notify()
         except IndexError:
             print('Impossible to set memory content. Index 0 out of bounds.')
+        finally:
+            self.condition.release()
 
     def set_i_index(self, i, index):
         try:
+            self.condition.acquire()
             self.memories[index].set_i(i)
+            self.condition.notify()
         except IndexError:
             print('Impossible to get memory content. Index %s out of bounds.' % index)
+        finally:
+            self.condition.release()
 
     def set_i_evaluation_index(self, i, evaluation, index):
         try:
+            self.condition.acquire()
             self.memories[index].set_i(i)
             self.memories[index].set_evaluation(evaluation)
+            self.condition.notify()
         except IndexError:
             print('Impossible to get memory content. Index %s out of bounds.' % index)
+        finally:
+            self.condition.release()
 
     def get_evaluation(self):
         memory = max(self.memories, key=lambda m: m.get_i())
@@ -110,15 +135,23 @@ class KDistributedMemory(Memory):
 
     def set_evaluation(self, evaluation):
         try:
+            self.condition.acquire()
             self.memories[0].set_evaluation(evaluation)
+            self.condition.notify()
         except IndexError:
             print('Impossible to get memory content. Index 0 out of bounds.')
+        finally:
+            self.condition.release()
 
     def set_evaluation_index(self, evaluation, index):
         try:
+            self.condition.acquire()
             self.memories[index].set_evaluation(evaluation)
+            self.condition.notify()
         except IndexError:
             print('Impossible to get memory content. Index %s out of bounds.' % index)
+        finally:
+            self.condition.release()
 
     def get_name(self):
         return self.name

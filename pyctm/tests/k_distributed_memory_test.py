@@ -33,15 +33,17 @@ class KDistributedMemoryTest(unittest.TestCase):
 
         distributed_output_memory.set_i(message)
 
-        time.sleep(20)
+        time.sleep(2)
         assert distributed_output_memory.get_i() == distributed_input_memory.get_i()
 
         message = "New message to test!"
         distributed_output_memory.set_i(message)
 
-        time.sleep(20)
+        time.sleep(2)
         assert distributed_output_memory.get_i() == distributed_input_memory.get_i()
 
+        distributed_output_memory.stop()
+        distributed_input_memory.stop()
 
 if __name__ == '__main__':
     unittest.main()

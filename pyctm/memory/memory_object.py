@@ -1,4 +1,3 @@
-import threading
 from pyctm.memory.memory import Memory
 
 
@@ -39,9 +38,6 @@ class MemoryObject(Memory):
             self.evaluation = 0
         else:
             self.evaluation = evaluation
-
-        if self.locked:
-            self.locked = False
 
     def set_id(self, id):
         self.id = id
