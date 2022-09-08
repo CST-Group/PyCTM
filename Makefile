@@ -8,15 +8,15 @@ kafka-start:
 
 .PHONY: execute-test
 execute-test:
-	python setup.py pytest
+	python3 setup.py pytest
 
 .PHONY: test
 test: kafka-start execute-test kafka-stop
 
 .PHONY: build
 build:
-	python setup.py bdist_wheel
+	python3 setup.py sdist bdist_wheel
 
 .PHONY: publish
 publish:
-	twine upload dist/*
+	python3 -m twine upload dist/*

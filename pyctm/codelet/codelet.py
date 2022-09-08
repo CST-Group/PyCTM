@@ -19,9 +19,17 @@ class Codelet(Thread):
     def proc(self):
         pass
 
+    def calculate_activation(self):
+        pass
+
+    def access_memory_objects(self):
+        pass
+
     def run(self):
 
         while self.enabled:
+            self.access_memory_objects()
+            self.calculate_activation()
             self.proc()
             time.sleep(self.timestamp)
 
@@ -49,5 +57,26 @@ class Codelet(Thread):
     def get_outputs(self):
         return self.outputs
 
+    def get_output(self, name):
+        for output in self.outputs:
+            if output.get_name() == name:
+                return output
+        
+        return None
+
+    def get_input(self, name):
+        for input_m in self.inputs:
+            if input_m.get_name() == name:
+                return input_m
+        
+        return None
+
     def get_broadcast(self):
         return self.broadcast
+
+    def get_broadcast(self, name):
+        for broadcast_m in self.broadcast:
+            if broadcast_m.get_name() == name:
+                return broadcast_m
+        
+        return None
