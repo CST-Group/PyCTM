@@ -6,8 +6,8 @@ setup(
     description='Python Cognitive System Toolkit for Microservices',
     author='Eduardo de Moraes Froes',
     license='MIT',
-    install_requires=['confluent-kafka'],
-    setup_requires=['pytest-runner'],
+    install_requires=['confluent-kafka', 'numpy'],
+    setup_requires=['pytest-runner', 'numpy'],
     tests_require=['pytest==4.4.1'],
     test_suite='tests',
     keywords=['python', 'cst']

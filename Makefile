@@ -17,6 +17,10 @@ test: kafka-start execute-test kafka-stop
 build:
 	python3 setup.py sdist bdist_wheel
 
+.PHONY: install
+install:
+	python3 setup.py install
+
 .PHONY: publish
 publish:
 	python3 -m twine upload dist/*
