@@ -161,10 +161,14 @@ class SDRIdeaSerializer():
         if value in self.values:
             return self.values.get(value)
         else:
-            array_value = self.generate_content(length, True, {}, self.values)
-            self.values[value] = array_value
+            while True:
+                array_value = self.generate_content(length, True, {}, self.values)
 
-            return array_value
+                if self.check_compatibility(array_value, True):
+
+                    self.values[value] = array_value
+
+                    return array_value
 
     def generate_content(self, length, is_value, dictionary, values):
 
@@ -216,9 +220,14 @@ class SDRIdeaSerializer():
             return self.dictionary[word]
         
         else:
-            value = self.generate_content(self.columns, False, self.dictionary, {})
-            self.dictionary[word] = value
-            return value
+            array_word = self.generate_content(self.columns, False, self.dictionary, {})
+
+            while True:
+                if self.check_compatibility(array_word, False):
+
+                    self.dictionary[word] = array_word
+
+                    return array_word
 
     def compare_values(self, new_value, value):
 
@@ -231,3 +240,16 @@ class SDRIdeaSerializer():
             return True
 
         return False
+    
+    def check_compatibility(self, new_value_word, is_value):
+
+        if is_value:
+            for value in self.values:
+                if self.compare_values(new_value_word, self.values[value]):
+                    return False
+        else:
+            for word in self.dictionary:
+                if self.compare_values(new_value_word, self.dictionary[word]):
+                    return False
+        
+        return True
