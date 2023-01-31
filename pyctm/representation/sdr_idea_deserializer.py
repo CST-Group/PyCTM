@@ -2,25 +2,27 @@ from pyctm.representation.idea import Idea
 from pyctm.representation.idea_metadata_values import IdeaMetadataValues
 from pyctm.representation.value_validation import ValueValidation
 import numpy as np
+from codecs import decode
+import struct
 
 class SDRIdeaDeserializer:
 
-    def __init__(self, dictionary, values):
+    def __init__(self, dictionary, values, corrector_engine=None, to_raw=False):
         self.dictionary = dictionary
         self.values = values
         self.value_validation = ValueValidation()
+        self.corrector_engine = corrector_engine
+        self.to_raw = to_raw
     
-    def deserializer(self, sdr_idea):
+    def deserialize(self, sdr):
 
         idea_list = []
 
-        self.__generate_idea_graph(sdr_idea, idea_list)
+        self.__generate_idea_graph(sdr, idea_list)
 
         return idea_list[0] if len(idea_list) > 0 else None
     
-    def __generate_idea_graph(self, sdr_idea, idea_list):
-
-        sdr = sdr_idea.sdr
+    def __generate_idea_graph(self, sdr, idea_list):
 
         idea_relationship = {}
 
@@ -113,18 +115,49 @@ class SDRIdeaDeserializer:
 
         for i in range(len(sdr)):
             for j in range(len(sdr[i])):
-                sum_check += sdr[i][j]
+                sum_check = sum_check + sdr[i][j]
         
-        return sum_check == 0
+        return sum_check <= 10
 
     def __extract_word(self, sdr_channel, row):
 
-        word = self.__get_word(sdr_channel[row])
+        word_sdr = sdr_channel[row]
+
+        if self.corrector_engine is not None:
+            word_sdr = self.corrector_engine.make_word_correction(word_sdr)
+
+        word = self.__get_word(word_sdr)
 
         return word if word is not None else ''
 
     
     def __extract_value(self, sdr_channel, row):
+        
+        if self.to_raw:
+            return self.__extract_value_raw(sdr_channel, row)
+        
+        return self.__extract_value_sdr(sdr_channel, row)
+
+    def __extract_value_raw(self, sdr_channel, row):
+
+        string_value = ""
+        for i in range(2):
+            sdr_channel[row+i][sdr_channel[row+i] < 0.5] = 0
+            sdr_channel[row+i][sdr_channel[row+i] >= 0.5] = 1   
+
+            for j in range(len(sdr_channel)):
+                string_value += str(int(sdr_channel[row + i, j]))
+                
+        return self.__bin_to_float(string_value)
+    
+    def __int_to_bytes(self, n, length):
+        return decode('%%0%dx' % (length << 1) % n, 'hex')[-length:]
+
+    def __bin_to_float(self, b):
+        bf = self.__int_to_bytes(int(b, 2), 8)
+        return struct.unpack('>d', bf)[0]
+
+    def __extract_value_sdr(self, sdr_channel, row):
 
         length = len(sdr_channel[row])
         x_range = int(length/4)
@@ -134,6 +167,9 @@ class SDRIdeaDeserializer:
         for i in range(4):
 
             value_sdr = self.__build_sdr(x_range, sdr_channel[row], i)
+
+            if self.corrector_engine is not None:
+                value_sdr = self.corrector_engine.make_value_correction(value_sdr)
 
             value_key = self.__get_value(value_sdr)
 
@@ -148,28 +184,34 @@ class SDRIdeaDeserializer:
         
         base_sdr = self.__build_sdr(x_range, sdr_channel[row+1], 0)
 
+        if self.corrector_engine is not None:
+            base_sdr = self.corrector_engine.make_value_correction(base_sdr)
+
         base = 0
 
         base_key = self.__get_value(base_sdr)
-
         if base_key is not None:
             base = base_key
         
-        value_signal = 1 if sdr_channel[row+1][x_range] * -1 == 0 else -1
-        base_signal = 1 if sdr_channel[row+1][x_range+1] * -1 == 0 else -1
+        value_signal_sdr  = self.__build_sdr(x_range, sdr_channel[row+1], 1)
+        base_signal_sdr  = self.__build_sdr(x_range, sdr_channel[row+1], 2)
+        
+        if self.corrector_engine is not None:
+            value_signal_sdr = self.corrector_engine.make_value_correction(value_signal_sdr)
+            base_signal_sdr = self.corrector_engine.make_value_correction(base_signal_sdr)
 
-        number = float(value_string) * (10 ** (base*base_signal)) * value_signal
+        value_signal_key = int(self.__get_value(value_sdr=value_signal_sdr))
+        base_signal_key = int(self.__get_value(value_sdr=base_signal_sdr))
+        
+        value_signal = 1 if value_signal_key * -1 == 0 else -1
+        base_signal = 1 if base_signal_key * -1 == 0 else -1
+
+        number = float(value_string) * (10 ** (float(base)*base_signal)) * value_signal
 
         return number
 
-    def __build_sdr(self, x_range, sdr_row, interval):
-        
-        sdr = np.full([x_range], 0)
-
-        for i in range(x_range):
-            sdr[i] = sdr_row[interval*x_range+i]
-        
-        return sdr
+    def __build_sdr(self, x_range, sdr_row, interval):        
+        return sdr_row[interval*x_range:(interval+1)*x_range]
     
     def __get_value(self, value_sdr):
 

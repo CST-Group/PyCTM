@@ -20,7 +20,7 @@ class SDRIdeaSerializerTest(unittest.TestCase):
 
     def test_sdr_serialization(self):
 
-        sdr_idea_serializer = SDRIdeaSerializer(16, 32, 32)
+        sdr_idea_serializer = SDRIdeaSerializer(16, 32, 32, to_raw=True)
 
         idea = self.init_idea()
 
@@ -28,9 +28,9 @@ class SDRIdeaSerializerTest(unittest.TestCase):
 
         print(sdr_idea)
 
-        sdr_idea_deserializer = SDRIdeaDeserializer(sdr_idea_serializer.dictionary, sdr_idea_serializer.values)
+        sdr_idea_deserializer = SDRIdeaDeserializer(sdr_idea_serializer.dictionary, sdr_idea_serializer.values, to_raw=True)
 
-        converted_idea = sdr_idea_deserializer.deserializer(sdr_idea=sdr_idea)
+        converted_idea = sdr_idea_deserializer.deserialize(sdr_idea.sdr)
 
         print(converted_idea)
 

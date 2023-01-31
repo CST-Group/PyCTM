@@ -11,8 +11,8 @@ class ValueConverter():
         while True:
 
             if value == 0 or value == 1:
-                number_base_ten.append(value)
-                number_base_ten.append(0)
+                number_base_ten.append(float(value))
+                number_base_ten.append(float(0))
 
                 return number_base_ten
             
@@ -22,8 +22,8 @@ class ValueConverter():
                     base+=1
                 
                 else:
-                    number_base_ten.append(value_divided*10)
-                    number_base_ten.append(base-1) 
+                    number_base_ten.append(float(value_divided*10))
+                    number_base_ten.append(float(base-1))
 
                     return number_base_ten
             
@@ -32,8 +32,8 @@ class ValueConverter():
                     value_divided*=10
                     base-=1
                 else:
-                    number_base_ten.append(value_divided/10)
-                    number_base_ten.append(base+1)
+                    number_base_ten.append(float(value_divided/10))
+                    number_base_ten.append(float(base+1))
 
                     return number_base_ten
             elif value < 1:
@@ -41,7 +41,7 @@ class ValueConverter():
                     value_divided*=10
                     base-=1
                 else:
-                    number_base_ten.append(value_divided/10)
-                    number_base_ten.append(base+1)
+                    number_base_ten.append(float(value_divided/10))
+                    number_base_ten.append(float(base+1))
 
                     return number_base_ten

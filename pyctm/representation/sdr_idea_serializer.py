@@ -5,11 +5,12 @@ from pyctm.representation.sdr_idea_builder import SDRIdeaBuilder
 from pyctm.representation.value_converter import ValueConverter
 import random
 import numpy as np
+import struct
 
 
 class SDRIdeaSerializer():
 
-    def __init__(self, channels, rows, columns, default_value=0, active_value=1, dictionary={}, values={}):
+    def __init__(self, channels, rows, columns, default_value=0, active_value=1, dictionary={}, values={}, to_raw=False):
         self.rows = rows
         self.columns = columns
         self.channels = channels
@@ -19,6 +20,7 @@ class SDRIdeaSerializer():
         self.dictionary = dictionary
         self.values = values
         self.channel_counter = 1
+        self.to_raw = to_raw
 
     def serialize(self, idea):
 
@@ -105,31 +107,53 @@ class SDRIdeaSerializer():
             
 
     def value_analyse(self, idea, sdr, channel):
-        if type(idea.value) is list:
-            for i in range(0, len(idea.value)):
-                self.set_numeric_value(sdr, channel, 11+i*2, self.columns, idea.value[i])
-        
-        else:
-            if type(idea.value) is str:
-                if idea != None:
-                    self.set_value(sdr, channel, 11, self.get_array_from_dictionary(str(idea.value)))
+        if idea.value != None:
+            if type(idea.value) is list:
+                for i in range(0, len(idea.value)):
+                    if type(idea.value[i]) is str:
+                        self.set_value(sdr, channel, 11 + i, self.get_array_from_dictionary(str(idea.value[i])))
+                    else:
+                        self.set_numeric_value(sdr, channel, 11+i*2, self.columns, idea.value[i])
+            
             else:
-                if type(idea.value) is bool:
-                    self.set_numeric_value(sdr, channel, 11, self.columns, 1 if idea.value else 0)
+                if type(idea.value) is str:
+                    if idea != None:
+                        self.set_value(sdr, channel, 11, self.get_array_from_dictionary(str(idea.value)))
                 else:
-                    self.set_numeric_value(sdr, channel, 11, self.columns, idea.value)
+                    if type(idea.value) is bool:
+                        self.set_numeric_value(sdr, channel, 11, self.columns, 1 if idea.value else 0)
+                    else:
+                        self.set_numeric_value(sdr, channel, 11, self.columns, idea.value)
                 
 
-
-
     def set_numeric_value(self, sdr, channel, row, length, value):
+        if self.to_raw:
+            self.set_numeric_value_raw(sdr, channel, row, length, value)
+        else:
+            self.set_numeric_value_sdr(sdr, channel, row, length, value)
+
+    def set_numeric_value_raw(self, sdr, channel, row, length, value):
+        
+        [d_value] = struct.unpack(">Q", struct.pack(">d", value))
+        string_value = '{:064b}'.format(d_value)
+
+        if string_value is not None or string_value != '':
+            offset = 0
+            for i in range(2):
+                for j in range(length):
+                    sdr[channel, row+i, j] = int(string_value[j+offset])
+            
+            offset = 32
+        
+
+    def set_numeric_value_sdr(self, sdr, channel, row, length, value):
         v_range = length//4
 
         value_converter = ValueConverter()
 
         base_ten_value = value_converter.convert_number_to_base_ten(abs(value))
 
-        value_string = str(base_ten_value[0])
+        value_string = "%.3f" % base_ten_value[0]
         value_string = value_string.replace('.', '')
         value_string = value_string.replace('-', '')
 
@@ -142,31 +166,33 @@ class SDRIdeaSerializer():
                 sdr[channel, row, i*v_range+j] = value_sdr[j]
 
         base = base_ten_value[1]
-        base_sdr = self.get_array_from_value(abs(base), v_range)
+        base_sdr = self.get_array_from_value(abs(int(base)), v_range)
 
         for i in range(0, len(base_sdr)):
             sdr[channel, row+1, i] = base_sdr[i]
 
-        if value < 0:
-            sdr[channel, row+1, len(base_sdr)] = 1
-        else:
-            sdr[channel, row+1, len(base_sdr)] = 0
 
-        if base < 0:
-            sdr[channel, row+1, len(base_sdr)+1] = 1
-        else:
-            sdr[channel, row+1, len(base_sdr)+1] = 0
+        sinal_sdr = self.get_array_from_value(1 if value < 0 else 0, v_range)
+
+        for i in range(0, len(sinal_sdr)):
+            sdr[channel, row+1, len(sinal_sdr) + i] = sinal_sdr[i]
+
+        base_signal_sdr = self.get_array_from_value(1 if base < 0 else 0, v_range)
+
+        for i in range(0, len(base_signal_sdr)):
+            sdr[channel, row+1, len(base_signal_sdr)*2 + i] = base_signal_sdr[i]
+
 
     def get_array_from_value(self, value, length):
-        if value in self.values:
-            return self.values.get(value)
+        if str(value) in self.values:
+            return self.values.get(str(value))
         else:
             while True:
                 array_value = self.generate_content(length, True, {}, self.values)
 
                 if self.check_compatibility(array_value, True):
 
-                    self.values[value] = array_value
+                    self.values[str(value)] = array_value
 
                     return array_value
 
@@ -176,7 +202,7 @@ class SDRIdeaSerializer():
 
         while retry:
 
-            value = self.generate_value(length)
+            value = self.generate_value(length, is_value, True)
             if is_value:
                 
                 if len(values.values()) == 0:
@@ -196,9 +222,12 @@ class SDRIdeaSerializer():
             if retry == False:
                 return value
 
-    def generate_value(self, length):
+    def generate_value(self, length, is_value, is_random):
 
         w = int(length/2)
+
+        if is_value and is_random:
+            w = random.randint(2, length-3)
 
         value = np.full([int(length)], int(self.default_value))
 
