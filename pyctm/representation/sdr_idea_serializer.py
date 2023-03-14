@@ -1,8 +1,10 @@
 
 
+from pyctm.representation.dictionary import Dictionary
 from pyctm.representation.idea_metadata_values import IdeaMetadataValues
 from pyctm.representation.sdr_idea_builder import SDRIdeaBuilder
 from pyctm.representation.value_converter import ValueConverter
+
 import random
 import numpy as np
 import struct
@@ -10,15 +12,13 @@ import struct
 
 class SDRIdeaSerializer():
 
-    def __init__(self, channels, rows, columns, default_value=0, active_value=1, dictionary={}, values={}, to_raw=False):
+    def __init__(self, channels, rows, columns, default_value=0, active_value=1, dictionary=Dictionary(), to_raw=False):
         self.rows = rows
         self.columns = columns
         self.channels = channels
         self.default_value = default_value
         self.active_value = active_value
-        self.value_converter = {}
         self.dictionary = dictionary
-        self.values = values
         self.channel_counter = 1
         self.to_raw = to_raw
 
@@ -66,7 +66,7 @@ class SDRIdeaSerializer():
 
     def set_name_value(self, idea, sdr, channel):
         if idea.name != None:
-            self.set_value(sdr, channel, 4, self.get_array_from_dictionary(idea.name))
+            self.set_value(sdr, channel, 4, self.get_array_from_words(idea.name))
     
     def set_value(self, sdr, channel, row, value):
         sdr[channel, row] = value
@@ -111,14 +111,14 @@ class SDRIdeaSerializer():
             if type(idea.value) is list:
                 for i in range(0, len(idea.value)):
                     if type(idea.value[i]) is str:
-                        self.set_value(sdr, channel, 11 + i, self.get_array_from_dictionary(str(idea.value[i])))
+                        self.set_value(sdr, channel, 11 + i, self.get_array_from_words(str(idea.value[i])))
                     else:
                         self.set_numeric_value(sdr, channel, 11+i*2, self.columns, idea.value[i])
             
             else:
                 if type(idea.value) is str:
                     if idea != None:
-                        self.set_value(sdr, channel, 11, self.get_array_from_dictionary(str(idea.value)))
+                        self.set_value(sdr, channel, 11, self.get_array_from_words(str(idea.value)))
                 else:
                     if type(idea.value) is bool:
                         self.set_numeric_value(sdr, channel, 11, self.columns, 1 if idea.value else 0)
@@ -147,89 +147,115 @@ class SDRIdeaSerializer():
         
 
     def set_numeric_value_sdr(self, sdr, channel, row, length, value):
-        v_range = length//4
+        v_range = length//2
 
         value_converter = ValueConverter()
 
         base_ten_value = value_converter.convert_number_to_base_ten(abs(value))
 
-        value_string = "%.3f" % base_ten_value[0]
+        value_string = "%.2f" % base_ten_value[0]
         value_string = value_string.replace('.', '')
         value_string = value_string.replace('-', '')
 
-        for i in range(0, min(len(value_string), 4)):
+        offset = 0
+        interval = 0
+
+        for i in range(0, min(len(value_string), 3)):
             value_int = abs(int(value_string[i]))
 
-            value_sdr = self.get_array_from_value(value_int, v_range)
+            value_sdr = self.get_array_from_values(value_int, v_range)
 
             for j in range(0, len(value_sdr)):
-                sdr[channel, row, i*v_range+j] = value_sdr[j]
+                sdr[channel, row+offset, interval*v_range+j] = value_sdr[j]
+            
+            if (i + 1) * v_range >= length:
+                offset = offset + 1
+                interval = 0
+            else:
+                interval = interval + 1
 
         base = base_ten_value[1]
-        base_sdr = self.get_array_from_value(abs(int(base)), v_range)
+        base_sdr = self.get_array_from_base_values(abs(int(base)), v_range//2)
 
         for i in range(0, len(base_sdr)):
-            sdr[channel, row+1, i] = base_sdr[i]
+            sdr[channel, row+1, v_range+i] = base_sdr[i]
 
-
-        sinal_sdr = self.get_array_from_value(1 if value < 0 else 0, v_range)
+        sinal_sdr = self.get_array_from_signal_values(1 if value < 0 else 0, v_range//4)
 
         for i in range(0, len(sinal_sdr)):
-            sdr[channel, row+1, len(sinal_sdr) + i] = sinal_sdr[i]
+            sdr[channel, row+1, v_range + len(base_sdr) + i] = sinal_sdr[i]
 
-        base_signal_sdr = self.get_array_from_value(1 if base < 0 else 0, v_range)
+        base_signal_sdr = self.get_array_from_signal_values(1 if base < 0 else 0, v_range//4)
 
         for i in range(0, len(base_signal_sdr)):
-            sdr[channel, row+1, len(base_signal_sdr)*2 + i] = base_signal_sdr[i]
+            sdr[channel, row+1, v_range + len(base_sdr) + len(sinal_sdr) + i] = base_signal_sdr[i]
 
-
-    def get_array_from_value(self, value, length):
-        if str(value) in self.values:
-            return self.values.get(str(value))
+    
+    def get_array_from_base_values(self, base, length):
+        if str(base) in self.dictionary.baseValues:
+            return self.dictionary.baseValues[str(base)]
         else:
-            while True:
-                array_value = self.generate_content(length, True, {}, self.values)
+            
+            array_base = self.generate_content(length, self.dictionary.baseValues)
+            self.dictionary.baseValues[str(base)] = array_base
 
-                if self.check_compatibility(array_value, True):
+            return array_base
 
-                    self.values[str(value)] = array_value
+    def get_array_from_signal_values(self, signal, length):
 
-                    return array_value
+        if str(signal) in self.dictionary.signalValues:
+            return self.dictionary.signalValues[str(signal)]
+        
+        else:
+            signal_sdr = np.full([int(length)], int(signal))
+            self.dictionary.signalValues[str(signal)] = signal_sdr.tolist()
 
-    def generate_content(self, length, is_value, dictionary, values):
+            return signal_sdr
+    
+    
+    def get_array_from_words(self, word):
+
+        if word in self.dictionary.words:
+            return self.dictionary.words[word]
+        
+        else:
+            array_word = self.generate_content(self.columns, self.dictionary.words)
+            self.dictionary.words[word] = array_word
+
+            return array_word 
+
+    def get_array_from_values(self, value, length):
+        if str(value) in self.dictionary.values:
+            return self.dictionary.values.get(str(value))
+        else:
+            
+            array_value = self.generate_content(length, self.dictionary.values)
+            self.dictionary.values[str(value)] = array_value
+
+            return array_value
+
+    def generate_content(self, length, map):
 
         retry = True
 
         while retry:
 
-            value = self.generate_value(length, is_value, True)
-            if is_value:
-                
-                if len(values.values()) == 0:
-                    retry = False
-                else:
-                    for stored_value in values.values():
-                        if len(stored_value) == len(value) and not self.compare_values(stored_value, value):
-                            retry = False
+            value = self.generate_sdr_representation(length)
+            
+            if len(map.values()) == 0:
+                retry = False
             else:
-                if len(dictionary.values()) == 0:
-                    retry = False
-                else:
-                    for stored_value in dictionary.values():
-                        if len(stored_value) == len(value) and not self.compare_values(stored_value, value):
-                            retry = False                
+                for stored_value in map.values():
+                    if len(stored_value) == len(value) and not self.compare_values(stored_value, value):
+                        retry = False                
 
             if retry == False:
                 return value
 
-    def generate_value(self, length, is_value, is_random):
+    def generate_sdr_representation(self, length):
 
         w = int(length/2)
-
-        if is_value and is_random:
-            w = random.randint(2, length-3)
-
-        value = np.full([int(length)], int(self.default_value))
+        value = np.full([int(length)], int(self.default_value)).tolist()
 
         for i in range(0, w):
 
@@ -243,20 +269,7 @@ class SDRIdeaSerializer():
         
         return value
 
-    def get_array_from_dictionary(self, word):
-
-        if word in self.dictionary:
-            return self.dictionary[word]
-        
-        else:
-            array_word = self.generate_content(self.columns, False, self.dictionary, {})
-
-            while True:
-                if self.check_compatibility(array_word, False):
-
-                    self.dictionary[word] = array_word
-
-                    return array_word
+   
 
     def compare_values(self, new_value, value):
 
@@ -269,16 +282,3 @@ class SDRIdeaSerializer():
             return True
 
         return False
-    
-    def check_compatibility(self, new_value_word, is_value):
-
-        if is_value:
-            for value in self.values:
-                if self.compare_values(new_value_word, self.values[value]):
-                    return False
-        else:
-            for word in self.dictionary:
-                if self.compare_values(new_value_word, self.dictionary[word]):
-                    return False
-        
-        return True

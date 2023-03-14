@@ -8,6 +8,7 @@ import torch
 
 from gan_model.generator import Generator
 from pyctm.correction_engines.naive_bayes_correction_engine import NaiveBayesCorrectorEngine
+from pyctm.representation.dictionary import Dictionary
 from pyctm.representation.idea import Idea
 from pyctm.representation.sdr_idea_deserializer import SDRIdeaDeserializer
 from pyctm.representation.sdr_idea_serializer import SDRIdeaSerializer
@@ -46,16 +47,10 @@ def open_json_file(gui=None):
 def open_dictionary_json_file(gui=None):
     file_path = askopenfile(mode='r', filetypes=[('Json File', '.json')])
     if file_path is not None:
-        dictionary = json.load(file_path)
+        object=json.load(file_path)
+        dictionary = Dictionary(**object)
         sdr_idea_serializer.dictionary = dictionary
         sdr_idea_deserializer.dictionary = dictionary
-
-def open_values_json_file(gui=None):
-    file_path = askopenfile(mode='r', filetypes=[('Json File', '.json')])
-    if file_path is not None:
-        values = json.load(file_path)
-        sdr_idea_serializer.values = values
-        sdr_idea_deserializer.values = values
 
 def open_model_file(gui=None):
     global generator_model
@@ -157,7 +152,7 @@ def check_state_plan(gui=None):
     figure_canvas.get_tk_widget().pack(side=LEFT, fill=BOTH)
 
 def prepare_correction_engine():
-    correction_engine = NaiveBayesCorrectorEngine(sdr_idea_serializer.dictionary, sdr_idea_serializer.values)
+    correction_engine = NaiveBayesCorrectorEngine(sdr_idea_serializer.dictionary)
     sdr_idea_deserializer.corrector_engine = correction_engine
 
 
@@ -279,7 +274,7 @@ if __name__ == '__main__':
     figure = None
 
     sdr_idea_serializer = SDRIdeaSerializer(16, 32, 32)
-    sdr_idea_deserializer = SDRIdeaDeserializer(sdr_idea_serializer.dictionary, sdr_idea_serializer.values)
+    sdr_idea_deserializer = SDRIdeaDeserializer(sdr_idea_serializer.dictionary)
     
     mir_pose_var = create_text_field(gui, 0, "MIR Pose:")
     ident_right_var = create_text_field(gui, 1, "Identified Markers Camera Right:")
@@ -298,8 +293,7 @@ if __name__ == '__main__':
     create_button(gui, 11, 0, "Load Planner Model File", open_model_file)
     create_button(gui, 11, 1, "Load Graph File", open_json_file)
 
-    create_button(gui, 12, 0, "Load Values File", open_values_json_file)
-    create_button(gui, 12, 1, "Load Dictionary File", open_dictionary_json_file)
+    create_button(gui, 12, 0, "Load Dictionary File", open_dictionary_json_file)
 
     clear_button = create_button(gui, 13, 0, "Clear Board", clear_board, 'disabled')
     check_button = create_button(gui, 13, 1, "Check Plan", check_state_plan, 'disabled')

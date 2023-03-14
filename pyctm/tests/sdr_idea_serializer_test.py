@@ -1,8 +1,11 @@
 import unittest
 
+import json
+
 from pyctm.representation.idea import Idea
 from pyctm.representation.sdr_idea_deserializer import SDRIdeaDeserializer
 from pyctm.representation.sdr_idea_serializer import SDRIdeaSerializer
+from pyctm.representation.dictionary import Dictionary
 
 
 
@@ -19,8 +22,14 @@ class SDRIdeaSerializerTest(unittest.TestCase):
         return idea
 
     def test_sdr_serialization(self):
+        
+        file = open("/opt/repository/dataTrainingShortSDR/dictionary.json")
 
-        sdr_idea_serializer = SDRIdeaSerializer(16, 32, 32, to_raw=True)
+        object=json.load(file)
+        dictionary = Dictionary(**object)
+
+        sdr_idea_serializer = SDRIdeaSerializer(16, 32, 32)
+        sdr_idea_serializer.dictionary = dictionary
 
         idea = self.init_idea()
 
@@ -28,7 +37,7 @@ class SDRIdeaSerializerTest(unittest.TestCase):
 
         print(sdr_idea)
 
-        sdr_idea_deserializer = SDRIdeaDeserializer(sdr_idea_serializer.dictionary, sdr_idea_serializer.values, to_raw=True)
+        sdr_idea_deserializer = SDRIdeaDeserializer(sdr_idea_serializer.dictionary)
 
         converted_idea = sdr_idea_deserializer.deserialize(sdr_idea.sdr)
 

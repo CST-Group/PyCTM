@@ -7,9 +7,8 @@ import struct
 
 class SDRIdeaDeserializer:
 
-    def __init__(self, dictionary, values, corrector_engine=None, to_raw=False):
+    def __init__(self, dictionary, corrector_engine=None, to_raw=False):
         self.dictionary = dictionary
-        self.values = values
         self.value_validation = ValueValidation()
         self.corrector_engine = corrector_engine
         self.to_raw = to_raw
@@ -160,13 +159,15 @@ class SDRIdeaDeserializer:
     def __extract_value_sdr(self, sdr_channel, row):
 
         length = len(sdr_channel[row])
-        x_range = int(length/4)
+        x_range = int(length/2)
+
+        offset = 0
+        interval = 0
 
         value_string = ""
+        for i in range(3):
 
-        for i in range(4):
-
-            value_sdr = self.__build_sdr(x_range, sdr_channel[row], i)
+            value_sdr = self.__build_sdr(x_range, sdr_channel[row+offset], interval)
 
             if self.corrector_engine is not None:
                 value_sdr = self.corrector_engine.make_value_correction(value_sdr)
@@ -178,33 +179,39 @@ class SDRIdeaDeserializer:
             
             if i == 0:
                 value_string += '.'
+            
+            if (i + 1) * x_range >= length:
+                offset = offset + 1
+                interval = 0
+            else:
+                interval = interval + 1
         
-        if len(value_string) == 1 or value_string == '':
+        if len(value_string) == 1 or value_string == '' or value_string == '0.00':
             return 0
         
-        base_sdr = self.__build_sdr(x_range, sdr_channel[row+1], 0)
+        base_sdr = self.__build_sdr(int(x_range/2), sdr_channel[row+1], 2)
 
         if self.corrector_engine is not None:
-            base_sdr = self.corrector_engine.make_value_correction(base_sdr)
+            base_sdr = self.corrector_engine.make_base_correction(base_sdr)
 
         base = 0
 
-        base_key = self.__get_value(base_sdr)
+        base_key = self.__get_base(base_sdr)
         if base_key is not None:
             base = base_key
         
-        value_signal_sdr  = self.__build_sdr(x_range, sdr_channel[row+1], 1)
-        base_signal_sdr  = self.__build_sdr(x_range, sdr_channel[row+1], 2)
+        value_signal_sdr  = self.__build_sdr(int(x_range/4), sdr_channel[row+1], 6)
+        base_signal_sdr  = self.__build_sdr(int(x_range/4), sdr_channel[row+1], 7)
         
         if self.corrector_engine is not None:
-            value_signal_sdr = self.corrector_engine.make_value_correction(value_signal_sdr)
-            base_signal_sdr = self.corrector_engine.make_value_correction(base_signal_sdr)
+            value_signal_sdr = self.corrector_engine.make_signal_correction(value_signal_sdr)
+            base_signal_sdr = self.corrector_engine.make_signal_correction(base_signal_sdr)
 
-        value_signal_key = int(self.__get_value(value_sdr=value_signal_sdr))
-        base_signal_key = int(self.__get_value(value_sdr=base_signal_sdr))
+        value_signal_key = self.__get_signal(value_signal_sdr)
+        base_signal_key = self.__get_signal(base_signal_sdr)
         
-        value_signal = 1 if value_signal_key * -1 == 0 else -1
-        base_signal = 1 if base_signal_key * -1 == 0 else -1
+        value_signal = 1 if int(value_signal_key) * -1 == 0 else -1
+        base_signal = 1 if int(base_signal_key) * -1 == 0 else -1
 
         number = float(value_string) * (10 ** (float(base)*base_signal)) * value_signal
 
@@ -215,16 +222,33 @@ class SDRIdeaDeserializer:
     
     def __get_value(self, value_sdr):
 
-        for index in range(len(self.values.values())):
-            if self.value_validation.compare_value(list(self.values.values())[index], value_sdr):
-                return list(self.values.keys())[index]
+        for index in range(len(self.dictionary.values.values())):
+            if self.value_validation.compare_value(list(self.dictionary.values.values())[index], value_sdr):
+                return list(self.dictionary.values.keys())[index]
         
         return None
     
     def __get_word(self, word_sdr):
 
-        for index in range(len(self.dictionary.values())):
-            if self.value_validation.compare_value(list(self.dictionary.values())[index], word_sdr):
-                return list(self.dictionary.keys())[index]
+        for index in range(len(self.dictionary.words.values())):
+            if self.value_validation.compare_value(list(self.dictionary.words.values())[index], word_sdr):
+                return list(self.dictionary.words.keys())[index]
+        
+        return None
+
+    
+    def __get_base(self, base_sdr):
+
+        for index in range(len(self.dictionary.baseValues.values())):
+            if self.value_validation.compare_value(list(self.dictionary.baseValues.values())[index], base_sdr):
+                return list(self.dictionary.baseValues.keys())[index]
+        
+        return None
+    
+    def __get_signal(self, signal_sdr):
+
+        for index in range(len(self.dictionary.signalValues.values())):
+            if self.value_validation.compare_value(list(self.dictionary.signalValues.values())[index], signal_sdr):
+                return list(self.dictionary.signalValues.keys())[index]
         
         return None
