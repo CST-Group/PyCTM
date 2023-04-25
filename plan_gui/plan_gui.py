@@ -57,7 +57,11 @@ def open_model_file(gui=None):
 
     file_path = askopenfile(mode='r', filetypes=[('Pytorch Model File', '.pth')])
     if file_path is not None:
-        generator_model = Generator(in_channels=16, features=16, image_size=32)
+        # generator_model = Generator(in_channels=5, features=64, image_size=32)
+
+        # generator_model = Generator(in_channels=6, features=32, image_size=32)
+        generator_model = Generator(in_channels=24, features=32, image_size=32)
+        # generator_model = Generator(embed_size=1024, hidden_size=4096, num_layers=4, encoded_image_size=32, num_heads=16, dropout=0.1)
         generator_model.load_state_dict(torch.load(file_path.name, map_location=torch.device('cpu')))
         generator_model.eval()
         if clear_button['state'] == 'normal':
@@ -130,23 +134,54 @@ def check_state_plan(gui=None):
     
     open_and_draw_graph_window(gui)
 
-    current_state_idea = create_idea()
+    last_action_idea = Idea(_id=4, name='idle', value="", _type=0)
 
-    sdr_idea = sdr_idea_serializer.serialize(current_state_idea)
+    goal_idea = create_idea([last_action_idea])
 
-    sdr_tensor = torch.from_numpy(sdr_idea.sdr).view(1, 16, 32, 32)
-    sdr_tensor = sdr_tensor.float()
+    sdr_goal_idea = sdr_idea_serializer.serialize(goal_idea)
 
-    sdr_plan_tensor = generator_model(sdr_tensor)
+    sdr_goal_tensor = torch.from_numpy(sdr_goal_idea.sdr).view(1, 24, 32, 32)
+    sdr_goal_tensor = sdr_goal_tensor.float()
 
-    sdr_plan_tensor[sdr_plan_tensor<0.5] = 0
-    sdr_plan_tensor[sdr_plan_tensor>=0.5] = 1
+    # sdr_action_step_tensor = generator_model(sdr_goal_tensor).view(1, 1, 32, 32)
+    sdr_action_step_tensor = torch.max(generator_model(sdr_goal_tensor).view(1, 2, 32, 32).detach(), dim=1).indices.view(1, 1, 32, 32)
 
-    # save_to_test(sdr_plan_tensor)
+    # sdr_action_step_tensor[sdr_action_step_tensor<0.5] = 0
+    # sdr_action_step_tensor[sdr_action_step_tensor>=0.5] = 1
 
-    plan_idea = sdr_idea_deserializer.deserialize(sdr_plan_tensor[0].detach().numpy())
+    action_step_idea = sdr_idea_deserializer.deserialize(sdr_action_step_tensor[0].detach().numpy())
 
-    draw_idea(plan_idea.child_ideas[0], None)    
+    draw_idea(action_step_idea, None)
+
+    id_index = 5
+
+    for i in range(10):
+        if action_step_idea.name != 'stop':
+            action_step_idea.id = id_index
+            goal_idea.child_ideas[-1].add(action_step_idea)
+
+            sdr_goal_idea = sdr_idea_serializer.serialize(goal_idea)
+
+            sdr_goal_tensor = torch.from_numpy(sdr_goal_idea.sdr).view(1, 24, 32, 32)
+            sdr_goal_tensor = sdr_goal_tensor.float()
+
+            sdr_action_step_tensor = torch.max(generator_model(sdr_goal_tensor).view(1, 2, 32, 32).detach(), dim=1).indices.view(1, 1, 32, 32)
+
+            # sdr_action_step_tensor[sdr_action_step_tensor<0.5] = 0
+            # sdr_action_step_tensor[sdr_action_step_tensor>=0.5] = 1
+
+            new_action_step_idea = sdr_idea_deserializer.deserialize(sdr_action_step_tensor[0].detach().numpy())
+            id_index = id_index + 1
+
+            new_action_step_idea.id = id_index
+
+            draw_idea(new_action_step_idea, action_step_idea)
+            action_step_idea = new_action_step_idea
+            
+        
+        else:
+            break
+
 
     figure_canvas = FigureCanvasTkAgg(figure, new_window)
     figure_canvas.get_tk_widget().pack(side=LEFT, fill=BOTH)
@@ -168,29 +203,24 @@ def save_to_test(sdr_plan_tensor):
 
 def draw_idea(idea, previous_node):
     if idea is not None:
-        print("%s - Action: %s - Value: %s" % (idea.id, idea.name, idea.value))
+        print("%s - Action: %s - Value: %s" % (idea.id-5, idea.name, idea.value))
 
         if 'move' in idea.name:
             if previous_node is not None:
-                draw_line(previous_node[0], previous_node[1], idea.value[0], idea.value[1], 'r')
+                draw_line(previous_node.value[0], previous_node.value[1], idea.value[0], idea.value[1], 'r')
 
             draw_point(idea.value[0], idea.value[1], idea.id, 'gold', True)
         elif 'pick' in idea.name:
             if previous_node is not None:
-                draw_line(previous_node[0], previous_node[1], idea.value[0], idea.value[1], 'r')
+                draw_line(previous_node.value[0], previous_node.value[1], idea.value[0], idea.value[1], 'r')
 
             draw_point(idea.value[0], idea.value[1], 'PK', 'orange', True)
         elif 'place' in idea.name:
             if previous_node is not None:
-                draw_line(previous_node[0], previous_node[1], idea.value[0], idea.value[1], 'r')
+                draw_line(previous_node.value[0], previous_node.value[1], idea.value[0], idea.value[1], 'r')
 
             draw_point(idea.value[0], idea.value[1], 'PC', 'purple', True)
 
-        if idea.child_ideas is not None:
-            if len(idea.child_ideas) > 0:
-                if idea.value is not None:
-                    if idea.value != '':
-                        draw_idea(idea.child_ideas[0], [idea.value[0], idea.value[1]])
 
 def draw_point(x, y, text, color, fill, radius=0.66):
     circle = patches.Circle((x, y), radius=radius, color=color, fill=fill)
@@ -201,45 +231,28 @@ def draw_line(x_i, y_i, x_f, y_f, color):
     arrow = patches.FancyArrow(x_i, y_i, x_f-x_i, y_f-y_i, color = color)
     ax.add_patch(arrow)
 
-def create_idea():
+def create_idea(list_action_steps_ideas):
 
-    current_state_idea = Idea(_id=0, name='currentState', value="")
+    goal_idea = Idea(_id=0, name=goal_intention_var.get(), value="", _type=0)
 
-    activation_range_front_idea = Idea(_id=3, name='activationRangeFront', value=int(activ_front_var.get()), _type=1)
-    activation_range_rear_idea = Idea(_id=4, name='activationRangeRear', value=int(activ_rear_var.get()), _type=1)
-    is_battery_low_idea = Idea(_id=5, name='isBatteryLow', value=int(activ_rear_var.get()), _type=1)
-    #robot_state_idea = Idea(_id=6, name='robotState', value = robot_state_var.get(), _type=1)
-    #ur5_state_idea = Idea(_id=7, name='ur5State', value=ur5_state_var.get(), _type=1)
-    mir_pose_idea = Idea(_id=6, name='mirPose', value=[float(i) for i in mir_pose_var.get().split(',')], _type=1)
-    goal_intetion_idea = Idea(_id=7, name='goalIntention', value=goal_intention_var.get(), _type=1)
-    goal_pose_idea = Idea(_id=8, name='goalPose', value=[float(i) for i in goal_pose_var.get().split(',')], _type=1)
-
-    transport_requests_idea = None
-
-    if transport_request_var.get() != '':
-        transport_requests_idea = Idea(_id=1, name='transportRequests', value="", _type=0)
-        transport_request_value = [str(i) for i in transport_request_var.get().split(',')]
-        transport_requests_idea.add(Idea(_id=2, name=str(transport_request_value[0]), value=transport_request_value[1:], _type=1))
-
-        current_state_idea.add(transport_requests_idea)
-
-    current_state_idea.add(activation_range_front_idea)
-    current_state_idea.add(activation_range_rear_idea)
-    current_state_idea.add(is_battery_low_idea)
-    #current_state_idea.add(robot_state_idea)
-    #current_state_idea.add(ur5_state_idea)
-    current_state_idea.add(mir_pose_idea)
-    current_state_idea.add(goal_intetion_idea)
-    current_state_idea.add(goal_pose_idea)
+    init_pose_idea = Idea(_id=1, name="robotPose", value=[float(i) for i in init_pose_var.get().split(',')], _type=1)
+    middle_pose_idea = Idea(_id=2, name="pickPose", value=[float(i) for i in middle_pose_var.get().split(',')], _type=1)
+    goal_pose_idea = Idea(_id=3, name="placePose", value=[float(i) for i in goal_pose_var.get().split(',')], _type=1)
+    context_idea = Idea(_id=4, name="context", value="", _type=0)
     
-    
-    
-    
+    goal_idea.add(init_pose_idea)
+    goal_idea.add(middle_pose_idea)
+    goal_idea.add(goal_pose_idea)
 
-    draw_point(mir_pose_idea.value[0], mir_pose_idea.value[1], 'I', 'green', True, radius=1)
+    for action_step in list_action_steps_ideas:
+        context_idea.add(action_step)
+
+    goal_idea.add(context_idea)
+
+    draw_point(init_pose_idea.value[0], init_pose_idea.value[1], 'I', 'green', True, radius=1)
     draw_point(goal_pose_idea.value[0], goal_pose_idea.value[1], 'F', 'red', True, radius=1)
 
-    return current_state_idea
+    return goal_idea
 
 def create_button(gui, row, column, text, func=None, state=None):
     button = Button(gui, text=text, command=lambda:func(gui) if func else None, state=state if state else 'normal')
@@ -254,14 +267,10 @@ if __name__ == '__main__':
     global ax
     global figure
 
-    global mir_pose_var
-    global ident_right_var
-    global ident_left_var
-    global activ_front_var
-    global activ_rear_var
-    global is_battery_var
-    global robot_state_var
-    global ur5_state_var
+    global init_pose_var
+    global middle_pose_var
+    global goal_pose_var
+    global goal_intention_var
 
     global clear_button
     global check_button
@@ -273,30 +282,21 @@ if __name__ == '__main__':
     ax = None
     figure = None
 
-    sdr_idea_serializer = SDRIdeaSerializer(16, 32, 32)
+    sdr_idea_serializer = SDRIdeaSerializer(24, 32, 32)
     sdr_idea_deserializer = SDRIdeaDeserializer(sdr_idea_serializer.dictionary)
     
-    mir_pose_var = create_text_field(gui, 0, "MIR Pose:")
-    ident_right_var = create_text_field(gui, 1, "Identified Markers Camera Right:")
-    ident_left_var = create_text_field(gui, 2, "Identified Markers Camera Left:")
-    activ_front_var = create_combo_box(gui, 3, "Activation Range Front:", [0, 1])
-    activ_rear_var = create_combo_box(gui, 4, "Activation Range Rear:", [0, 1])
-    is_battery_var = create_combo_box(gui, 5, "Is Battery Low:", [0, 1])
-    robot_state_var = create_combo_box(gui, 6, "Robot State:", ['moving', 'stopped'])
-    ur5_state_var = create_combo_box(gui, 7, "UR5 State:", ['moving', 'stopped'])
-
-    transport_request_var = create_text_field(gui, 8, "Transport Requests:")    
+    init_pose_var = create_text_field(gui, 0, "Init Pose:")
+    middle_pose_var = create_text_field(gui, 1, "Middle Pose:")
+    goal_pose_var = create_text_field(gui, 2, "Goal Pose:")    
+    goal_intention_var = create_combo_box(gui, 3, "Goal Intention:", ['EXPLORATION', 'CHARGE', 'TRANSPORT'])
     
-    goal_intention_var = create_combo_box(gui, 9, "Goal Intention:", ['EXPLORATION', 'CHARGE', 'TRANSPORT'])
-    goal_pose_var = create_text_field(gui, 10, "Goal Pose:")    
-    
-    create_button(gui, 11, 0, "Load Planner Model File", open_model_file)
-    create_button(gui, 11, 1, "Load Graph File", open_json_file)
+    create_button(gui, 4, 0, "Load Planner Model File", open_model_file)
+    create_button(gui, 4, 1, "Load Graph File", open_json_file)
 
-    create_button(gui, 12, 0, "Load Dictionary File", open_dictionary_json_file)
+    create_button(gui, 5, 0, "Load Dictionary File", open_dictionary_json_file)
 
-    clear_button = create_button(gui, 13, 0, "Clear Board", clear_board, 'disabled')
-    check_button = create_button(gui, 13, 1, "Check Plan", check_state_plan, 'disabled')
+    clear_button = create_button(gui, 6, 0, "Clear Board", clear_board, 'disabled')
+    check_button = create_button(gui, 6, 1, "Check Plan", check_state_plan, 'disabled')
 
     gui.mainloop()
 

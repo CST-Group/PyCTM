@@ -235,50 +235,32 @@ class SDRIdeaSerializer():
             return array_value
 
     def generate_content(self, length, map):
-
-        retry = True
-
-        while retry:
-
-            value = self.generate_sdr_representation(length)
-            
-            if len(map.values()) == 0:
-                retry = False
-            else:
-                for stored_value in map.values():
-                    if len(stored_value) == len(value) and not self.compare_values(stored_value, value):
-                        retry = False                
-
-            if retry == False:
-                return value
-
-    def generate_sdr_representation(self, length):
-
-        w = int(length/2)
-        value = np.full([int(length)], int(self.default_value)).tolist()
-
-        for i in range(0, w):
-
-            retry = True
-
-            while retry:
-                index = random.randint(0, length-1)
-                if value[index] != 1:
-                    value[index] = self.active_value
-                    retry = False
+        return self.generate_content_max_hamming_distance(map.values(), length, length//2)
+    
+    def generate_content_max_hamming_distance(self, existing_arrays, lenght_words, active_bits_in_words):
         
-        return value
+        new_array = [0] * lenght_words
+        num_ones = 0
+        while num_ones < random.randint(active_bits_in_words//2, active_bits_in_words):
+            index_to_set = random.randint(0, lenght_words-1)
+            if new_array[index_to_set] == 0:
+                new_array[index_to_set] = 1
+                num_ones += 1
 
-   
+        distances = []
+        for array in existing_arrays:
+            distance = sum([1 for i in range(lenght_words) if new_array[i] != array[i]])
+            distances.append(distance)
 
-    def compare_values(self, new_value, value):
+        while min(distances) <= 1:
+            index_to_flip = random.randint(0, lenght_words-1)
+            new_array[index_to_flip] = 1 - new_array[index_to_flip]
+            distances = []
+            for array in existing_arrays:
+                distance = sum([1 for i in range(lenght_words) if new_array[i] != array[i]])
+                distances.append(distance)
 
-        if len(new_value) == len(value):
-
-            for i in range(0, len(new_value)):
-                if new_value[i] != value[i]:
-                    return False
-
-            return True
-
-        return False
+        if new_array in existing_arrays:
+            return self.generate_new_binary_array(existing_arrays, lenght_words, active_bits_in_words)
+        else:
+            return new_array
