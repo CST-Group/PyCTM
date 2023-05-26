@@ -6,7 +6,7 @@ class IdeaMetadataValues():
         metadata_map = {}
 
         metadata_map['int'] = 1
-        metadata_map['float'] = 2
+        metadata_map['float'] = 3
         metadata_map['double'] = 3
         metadata_map['char'] = 4
         metadata_map['short'] = 5
@@ -15,7 +15,7 @@ class IdeaMetadataValues():
 
         metadata_map['list_int'] = 8
         metadata_map['list_double'] = 9
-        metadata_map['list_float'] = 10
+        metadata_map['list_float'] = 9
         metadata_map['list_short'] = 11
         metadata_map['list_long'] = 12        
         metadata_map['list_bool'] = 13

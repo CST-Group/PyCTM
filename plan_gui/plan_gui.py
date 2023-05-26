@@ -5,6 +5,7 @@ from matplotlib import pyplot as plt, patches
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import json
 import torch
+import numpy as np
 
 from gan_model.generator import Generator
 from pyctm.correction_engines.naive_bayes_correction_engine import NaiveBayesCorrectorEngine
@@ -44,6 +45,13 @@ def open_json_file(gui=None):
         graph = json.load(file_path)
         clear_button['state'] = 'normal'
 
+def open_artags_json_file(gui=None):
+    global artags
+
+    file_path = askopenfile(mode='r', filetypes=[('Json File', '.json')])
+    if file_path is not None:
+        artags=json.load(file_path)
+
 def open_dictionary_json_file(gui=None):
     file_path = askopenfile(mode='r', filetypes=[('Json File', '.json')])
     if file_path is not None:
@@ -57,11 +65,7 @@ def open_model_file(gui=None):
 
     file_path = askopenfile(mode='r', filetypes=[('Pytorch Model File', '.pth')])
     if file_path is not None:
-        # generator_model = Generator(in_channels=5, features=64, image_size=32)
-
-        # generator_model = Generator(in_channels=6, features=32, image_size=32)
-        generator_model = Generator(in_channels=24, features=32, image_size=32)
-        # generator_model = Generator(embed_size=1024, hidden_size=4096, num_layers=4, encoded_image_size=32, num_heads=16, dropout=0.1)
+        generator_model = Generator(in_channels=10, features=32, image_size=32)
         generator_model.load_state_dict(torch.load(file_path.name, map_location=torch.device('cpu')))
         generator_model.eval()
         if clear_button['state'] == 'normal':
@@ -80,7 +84,7 @@ def draw_node(ax, node):
     coordinates = node['coordinates']
     circle = patches.Circle((coordinates[0], coordinates[1]), radius=1, color='gray')
     ax.add_patch(circle)
-    ax.annotate(node['id'], xy=(coordinates[0], coordinates[1]), fontsize=12, ha="center")
+    ax.annotate('', xy=(coordinates[0], coordinates[1]), fontsize=12, ha="center")
 
 
 def clear_board(gui=None):
@@ -128,60 +132,71 @@ def create_combo_box(gui, row, label, list):
 def check_state_plan(gui=None):
 
     prepare_correction_engine()
+    list_actions = []
 
     if new_window is not None:
         new_window.destroy()
     
     open_and_draw_graph_window(gui)
 
-    last_action_idea = Idea(_id=4, name='idle', value="", _type=0)
-
-    goal_idea = create_idea([last_action_idea])
+    goal_idea = create_goal_idea()
 
     sdr_goal_idea = sdr_idea_serializer.serialize(goal_idea)
 
-    sdr_goal_tensor = torch.from_numpy(sdr_goal_idea.sdr).view(1, 24, 32, 32)
+    sdr_goal_tensor = torch.from_numpy(sdr_goal_idea.sdr).view(1, 10, 32, 32)
     sdr_goal_tensor = sdr_goal_tensor.float()
 
-    # sdr_action_step_tensor = generator_model(sdr_goal_tensor).view(1, 1, 32, 32)
-    sdr_action_step_tensor = torch.max(generator_model(sdr_goal_tensor).view(1, 2, 32, 32).detach(), dim=1).indices.view(1, 1, 32, 32)
+    full_control = torch.zeros(1, 32).float()
+    full_control[:, :2] = torch.from_numpy(np.asarray([goal_intention_value(goal_intention_var.get()),float(plan_size_var.get())])).view(1, 2).float()
 
-    # sdr_action_step_tensor[sdr_action_step_tensor<0.5] = 0
-    # sdr_action_step_tensor[sdr_action_step_tensor>=0.5] = 1
+    sdr_action_step_tensor = torch.max(generator_model(sdr_goal_tensor, full_control).view(1, 2, 32, 32).detach(), dim=1).indices.view(1, 1, 32, 32)
 
     action_step_idea = sdr_idea_deserializer.deserialize(sdr_action_step_tensor[0].detach().numpy())
+    list_actions.append(action_step_idea)
 
-    draw_idea(action_step_idea, None)
+    id_index = 6
 
-    id_index = 5
+    action_step_idea.id = id_index
+    action_step_idea.type = 1.0
 
-    for i in range(10):
+    goal_idea.child_ideas[-1].add(action_step_idea)
+
+    print("%s - Action: %s - Value: %s" % (action_step_idea.id, action_step_idea.name, action_step_idea.value))
+
+    for i in range(20):
         if action_step_idea.name != 'stop':
-            action_step_idea.id = id_index
-            goal_idea.child_ideas[-1].add(action_step_idea)
-
+            
             sdr_goal_idea = sdr_idea_serializer.serialize(goal_idea)
 
-            sdr_goal_tensor = torch.from_numpy(sdr_goal_idea.sdr).view(1, 24, 32, 32)
+            sdr_goal_tensor = torch.from_numpy(sdr_goal_idea.sdr).view(1, 10, 32, 32)   
             sdr_goal_tensor = sdr_goal_tensor.float()
 
-            sdr_action_step_tensor = torch.max(generator_model(sdr_goal_tensor).view(1, 2, 32, 32).detach(), dim=1).indices.view(1, 1, 32, 32)
-
-            # sdr_action_step_tensor[sdr_action_step_tensor<0.5] = 0
-            # sdr_action_step_tensor[sdr_action_step_tensor>=0.5] = 1
+            sdr_action_step_tensor = torch.max(generator_model(sdr_goal_tensor, full_control).view(1, 2, 32, 32).detach(), dim=1).indices.view(1, 1, 32, 32)
 
             new_action_step_idea = sdr_idea_deserializer.deserialize(sdr_action_step_tensor[0].detach().numpy())
             id_index = id_index + 1
 
-            new_action_step_idea.id = id_index
-
-            draw_idea(new_action_step_idea, action_step_idea)
             action_step_idea = new_action_step_idea
+
+            action_step_idea.id = id_index
+            action_step_idea.type = 1.0
+
+            if len(goal_idea.child_ideas[-1].child_ideas) >= 5:
+                goal_idea.child_ideas[-1].child_ideas.pop(0)
+
+            goal_idea.child_ideas[-1].add(action_step_idea)
             
+            list_actions.append(action_step_idea)
+
+            print("%s - Action: %s - Value: %s" % (new_action_step_idea.id, new_action_step_idea.name, new_action_step_idea.value))
         
         else:
             break
 
+    
+    print("Total of Steps:" + str(len(list_actions) + 1))
+
+    draw_plan(list_actions=list_actions)
 
     figure_canvas = FigureCanvasTkAgg(figure, new_window)
     figure_canvas.get_tk_widget().pack(side=LEFT, fill=BOTH)
@@ -201,26 +216,66 @@ def save_to_test(sdr_plan_tensor):
         json.dump(plan_generated_dic, write_file)
 
 
-def draw_idea(idea, previous_node):
+def draw_plan(list_actions):
+    
+    previous_idea = None
+
+    for i in range(len(list_actions)):
+        if list_actions[i].name != 'stop':
+            
+            idea_pose = get_position_from_idea(list_actions[i])
+            
+            if i != 0:
+                previous_idea = list_actions[i-1]
+            else:
+                nodes = graph["nodes"]
+                for node in nodes:
+                    if float(node["id"]) == float(init_node_var.get()):
+                       draw_line((node['coordinates'])[0], (node['coordinates'])[1], idea_pose[0], idea_pose[1], 'r')
+                       draw_point((node['coordinates'])[0], (node['coordinates'])[1], "%i" % int(float(init_node_var.get())), 'green', True)
+
+            if previous_idea is not None:
+                previous_idea_pose = get_position_from_idea(previous_idea)
+
+                draw_line(previous_idea_pose[0], previous_idea_pose[1], idea_pose[0], idea_pose[1], 'r')
+
+            if 'moveToNode' in list_actions[i].name:    
+                draw_point(idea_pose[0], idea_pose[1], "%i" % int(list_actions[i].value), 'gold', True)
+            
+            elif 'moveTo' in list_actions[i].name:
+                draw_point(idea_pose[0], idea_pose[1], "%i" % int(list_actions[i].value), 'orange', True)
+            
+            elif 'pick' in list_actions[i].name:
+                draw_point(idea_pose[0], idea_pose[1], "%i" % int(list_actions[i].value[0]), 'purple', True)
+            
+            elif 'place' in list_actions[i].name:
+                draw_point(idea_pose[0], idea_pose[1], "%i" % int(list_actions[i].value[0]), 'red', True)
+        
+def get_position_from_idea(idea):
     if idea is not None:
-        print("%s - Action: %s - Value: %s" % (idea.id-5, idea.name, idea.value))
+        if 'moveToNode' in idea.name:
+            for node in graph['nodes']:
+                if node['id'] == int(idea.value):
+                    return node['coordinates']
 
-        if 'move' in idea.name:
-            if previous_node is not None:
-                draw_line(previous_node.value[0], previous_node.value[1], idea.value[0], idea.value[1], 'r')
+        elif 'moveTo' in idea.name:
+            return get_artag(idea.value)['pose']
 
-            draw_point(idea.value[0], idea.value[1], idea.id, 'gold', True)
         elif 'pick' in idea.name:
-            if previous_node is not None:
-                draw_line(previous_node.value[0], previous_node.value[1], idea.value[0], idea.value[1], 'r')
-
-            draw_point(idea.value[0], idea.value[1], 'PK', 'orange', True)
+            return get_artag(idea.value[0])['pose']
+            
         elif 'place' in idea.name:
-            if previous_node is not None:
-                draw_line(previous_node.value[0], previous_node.value[1], idea.value[0], idea.value[1], 'r')
+            return get_artag(idea.value[0])['pose']
+    
+    return None
 
-            draw_point(idea.value[0], idea.value[1], 'PC', 'purple', True)
-
+def get_artag(artag_id):
+    
+    for artag in artags:
+        if artag["id"] == artag_id:
+            return artag
+    
+    return None
 
 def draw_point(x, y, text, color, fill, radius=0.66):
     circle = patches.Circle((x, y), radius=radius, color=color, fill=fill)
@@ -231,26 +286,20 @@ def draw_line(x_i, y_i, x_f, y_f, color):
     arrow = patches.FancyArrow(x_i, y_i, x_f-x_i, y_f-y_i, color = color)
     ax.add_patch(arrow)
 
-def create_idea(list_action_steps_ideas):
-
-    goal_idea = Idea(_id=0, name=goal_intention_var.get(), value="", _type=0)
-
-    init_pose_idea = Idea(_id=1, name="robotPose", value=[float(i) for i in init_pose_var.get().split(',')], _type=1)
-    middle_pose_idea = Idea(_id=2, name="pickPose", value=[float(i) for i in middle_pose_var.get().split(',')], _type=1)
-    goal_pose_idea = Idea(_id=3, name="placePose", value=[float(i) for i in goal_pose_var.get().split(',')], _type=1)
-    context_idea = Idea(_id=4, name="context", value="", _type=0)
+def create_goal_idea():
+    goal_idea = Idea(_id=0, name="Goal", value="", _type=1.0)
+    init_node_idea = Idea(_id=1, name="initialNode", value=float(init_node_var.get()), _type=1.0)
+    intermidiate_idea = Idea(_id=2, name="intermediateGoal", value=[float(i) for i in intermidiate_var.get().split(',')], _type=1.0)
+    final_goal_idea = Idea(_id=3, name="finalGoal", value=[float(i) for i in final_goal_var.get().split(',')], _type=1.0)
+    context_idea = Idea(_id=4, name="lastActionSteps", value="", _type=0.0)
     
-    goal_idea.add(init_pose_idea)
-    goal_idea.add(middle_pose_idea)
-    goal_idea.add(goal_pose_idea)
+    goal_idea.add(init_node_idea)
+    goal_idea.add(intermidiate_idea)
+    goal_idea.add(final_goal_idea)
 
-    for action_step in list_action_steps_ideas:
-        context_idea.add(action_step)
+    context_idea.add(Idea(_id=5, name='idle', value="", _type=1.0))
 
     goal_idea.add(context_idea)
-
-    draw_point(init_pose_idea.value[0], init_pose_idea.value[1], 'I', 'green', True, radius=1)
-    draw_point(goal_pose_idea.value[0], goal_pose_idea.value[1], 'F', 'red', True, radius=1)
 
     return goal_idea
 
@@ -259,6 +308,27 @@ def create_button(gui, row, column, text, func=None, state=None):
     button.grid(row=row, column=column, pady=3)
 
     return button
+
+def compare_sdr(goal, target):
+        for i in range(10):
+            print("Channel:" + str(i) + " OK!")
+            for j in range(32):
+                for k in range(32):
+                    if goal[i,j,k] != target[0][i][j][k]:
+                        print("Channel:" + str(i))
+                        print("Row:" + str(j))
+                        print("Collumn:" + str(k))
+                        return False
+                    
+        return True
+
+def goal_intention_value(goal_intention):
+    if goal_intention == 'TRANSPORT':
+        return float(1.0)
+    elif goal_intention == 'CHARGE':
+        return float(2.0)
+    else:
+        return float(3.0)
 
 if __name__ == '__main__':
     gui = create_gui()
@@ -277,26 +347,28 @@ if __name__ == '__main__':
 
     global sdr_idea_serializer
     global sdr_idea_deserializer
+    global artags
 
-    new_window = None
+    new_window = None  
     ax = None
     figure = None
 
-    sdr_idea_serializer = SDRIdeaSerializer(24, 32, 32)
+    sdr_idea_serializer = SDRIdeaSerializer(10, 32, 32)
     sdr_idea_deserializer = SDRIdeaDeserializer(sdr_idea_serializer.dictionary)
     
-    init_pose_var = create_text_field(gui, 0, "Init Pose:")
-    middle_pose_var = create_text_field(gui, 1, "Middle Pose:")
-    goal_pose_var = create_text_field(gui, 2, "Goal Pose:")    
+    init_node_var = create_text_field(gui, 0, "Init Node:")
+    intermidiate_var = create_text_field(gui, 1, "Intermidiate Goal:")
+    final_goal_var = create_text_field(gui, 2, "Final Goal:")    
     goal_intention_var = create_combo_box(gui, 3, "Goal Intention:", ['EXPLORATION', 'CHARGE', 'TRANSPORT'])
+    plan_size_var = create_text_field(gui, 4, "Plan Size:")    
     
-    create_button(gui, 4, 0, "Load Planner Model File", open_model_file)
-    create_button(gui, 4, 1, "Load Graph File", open_json_file)
-
-    create_button(gui, 5, 0, "Load Dictionary File", open_dictionary_json_file)
-
-    clear_button = create_button(gui, 6, 0, "Clear Board", clear_board, 'disabled')
-    check_button = create_button(gui, 6, 1, "Check Plan", check_state_plan, 'disabled')
+    create_button(gui, 5, 0, "Load Graph File", open_json_file)
+    create_button(gui, 5, 1, "Load Dictionary File", open_dictionary_json_file)
+    create_button(gui, 6, 0, "Load Planner Model File", open_model_file)
+    create_button(gui, 6, 1, "Load ARTags File", open_artags_json_file)
+    
+    clear_button = create_button(gui, 7, 0, "Clear Board", clear_board, 'disabled')
+    check_button = create_button(gui, 7, 1, "Check Plan", check_state_plan, 'disabled')
 
     gui.mainloop()
 
