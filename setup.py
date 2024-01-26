@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 setup(
     name='pyctm',
     packages=find_packages(),
-    version='0.0.8',
+    version='0.0.10',
     description='Python Cognitive System Toolkit for Microservices',
     author='Eduardo de Moraes Froes',
     license='MIT',

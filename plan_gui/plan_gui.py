@@ -6,6 +6,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import json
 import torch
 import numpy as np
+import torch.nn.functional as F
 
 from gan_model.generator import Generator
 from pyctm.correction_engines.naive_bayes_correction_engine import NaiveBayesCorrectorEngine
@@ -65,7 +66,7 @@ def open_model_file(gui=None):
 
     file_path = askopenfile(mode='r', filetypes=[('Pytorch Model File', '.pth')])
     if file_path is not None:
-        generator_model = Generator(in_channels=10, features=32, image_size=32)
+        generator_model = Generator(in_channels=10, features=128, image_size=32, control_size=32)
         generator_model.load_state_dict(torch.load(file_path.name, map_location=torch.device('cpu')))
         generator_model.eval()
         if clear_button['state'] == 'normal':
@@ -84,7 +85,7 @@ def draw_node(ax, node):
     coordinates = node['coordinates']
     circle = patches.Circle((coordinates[0], coordinates[1]), radius=1, color='gray')
     ax.add_patch(circle)
-    ax.annotate('', xy=(coordinates[0], coordinates[1]), fontsize=12, ha="center")
+    ax.annotate(node['id'], xy=(coordinates[0], coordinates[1]), fontsize=12, ha="center")
 
 
 def clear_board(gui=None):
@@ -146,45 +147,48 @@ def check_state_plan(gui=None):
     sdr_goal_tensor = torch.from_numpy(sdr_goal_idea.sdr).view(1, 10, 32, 32)
     sdr_goal_tensor = sdr_goal_tensor.float()
 
-    full_control = torch.zeros(1, 32).float()
-    full_control[:, :2] = torch.from_numpy(np.asarray([goal_intention_value(goal_intention_var.get()),float(plan_size_var.get())])).view(1, 2).float()
+    control =  torch.from_numpy(np.asarray([float(plan_size_var.get())] + [float(i) for i in occupied_nodes_var.get().split(',')])).float()
+    control = control.unsqueeze(0)
 
-    sdr_action_step_tensor = torch.max(generator_model(sdr_goal_tensor, full_control).view(1, 2, 32, 32).detach(), dim=1).indices.view(1, 1, 32, 32)
+    control = F.pad(control, (0, 32 - control.size(1)), "constant", 0.0).float()
+
+    sdr_action_step_tensor = torch.argmax(generator_model(sdr_goal_tensor, control).view(1, 2, 32, 32).detach(), dim=1).view(1, 1, 32, 32)
 
     action_step_idea = sdr_idea_deserializer.deserialize(sdr_action_step_tensor[0].detach().numpy())
-    list_actions.append(action_step_idea)
-
+    
     id_index = 6
 
     action_step_idea.id = id_index
     action_step_idea.type = 1.0
 
     goal_idea.child_ideas[-1].add(action_step_idea)
+    list_actions.append(action_step_idea)
 
     print("%s - Action: %s - Value: %s" % (action_step_idea.id, action_step_idea.name, action_step_idea.value))
 
     for i in range(20):
         if action_step_idea.name != 'stop':
-            
+
             sdr_goal_idea = sdr_idea_serializer.serialize(goal_idea)
 
             sdr_goal_tensor = torch.from_numpy(sdr_goal_idea.sdr).view(1, 10, 32, 32)   
             sdr_goal_tensor = sdr_goal_tensor.float()
 
-            sdr_action_step_tensor = torch.max(generator_model(sdr_goal_tensor, full_control).view(1, 2, 32, 32).detach(), dim=1).indices.view(1, 1, 32, 32)
+            # full_control = torch.randn(1, 64).float()
+            sdr_action_step_tensor = torch.argmax(generator_model(sdr_goal_tensor, control).view(1, 2, 32, 32).detach(), dim=1).view(1, 1, 32, 32)
 
             new_action_step_idea = sdr_idea_deserializer.deserialize(sdr_action_step_tensor[0].detach().numpy())
-            id_index = id_index + 1
+            id_index+=1
+
+            new_action_step_idea.id = id_index
+            new_action_step_idea.type = 1.0
 
             action_step_idea = new_action_step_idea
 
-            action_step_idea.id = id_index
-            action_step_idea.type = 1.0
-
-            if len(goal_idea.child_ideas[-1].child_ideas) >= 5:
-                goal_idea.child_ideas[-1].child_ideas.pop(0)
-
             goal_idea.child_ideas[-1].add(action_step_idea)
+
+            if len(goal_idea.child_ideas[-1].child_ideas) > 5:
+                goal_idea.child_ideas[-1].child_ideas.pop(0)
             
             list_actions.append(action_step_idea)
 
@@ -221,11 +225,11 @@ def draw_plan(list_actions):
     previous_idea = None
 
     for i in range(len(list_actions)):
-        if list_actions[i].name != 'stop':
+        if list_actions[i].name != 'stop' and list_actions[i].name != 'idle':
             
             idea_pose = get_position_from_idea(list_actions[i])
             
-            if i != 0:
+            if i != 0 and list_actions[i-1].name != 'idle':
                 previous_idea = list_actions[i-1]
             else:
                 nodes = graph["nodes"]
@@ -272,7 +276,7 @@ def get_position_from_idea(idea):
 def get_artag(artag_id):
     
     for artag in artags:
-        if artag["id"] == artag_id:
+        if artag["id"] == int(round(artag_id)):
             return artag
     
     return None
@@ -287,21 +291,31 @@ def draw_line(x_i, y_i, x_f, y_f, color):
     ax.add_patch(arrow)
 
 def create_goal_idea():
-    goal_idea = Idea(_id=0, name="Goal", value="", _type=1.0)
-    init_node_idea = Idea(_id=1, name="initialNode", value=float(init_node_var.get()), _type=1.0)
-    intermidiate_idea = Idea(_id=2, name="intermediateGoal", value=[float(i) for i in intermidiate_var.get().split(',')], _type=1.0)
-    final_goal_idea = Idea(_id=3, name="finalGoal", value=[float(i) for i in final_goal_var.get().split(',')], _type=1.0)
-    context_idea = Idea(_id=4, name="lastActionSteps", value="", _type=0.0)
+    #goal_idea = Idea(_id=0, name="Goal", value=float(goal_intention_value(goal_intention_var.get())), _type=0.0)
+    goal_idea = Idea(_id=0, name="Goal", value="", _type=0)
+    init_node_idea = Idea(_id=1, name="initialNode", value=float(init_node_var.get()), _type=1)
+    intermidiate_idea = Idea(_id=2, name="middleTarget", value=[float(i) for i in intermidiate_var.get().split(',')], _type=1)
+    final_goal_idea = Idea(_id=3, name="finalTarget", value=[float(i) for i in final_goal_var.get().split(',')], _type=1)
+    context_idea = Idea(_id=4, name="actionSteps", value="", _type=0)
     
     goal_idea.add(init_node_idea)
     goal_idea.add(intermidiate_idea)
     goal_idea.add(final_goal_idea)
 
-    context_idea.add(Idea(_id=5, name='idle', value="", _type=1.0))
+    context_idea.add(Idea(_id=5, name='idle', value="", _type=1))
 
     goal_idea.add(context_idea)
 
     return goal_idea
+
+
+def get_last_action_step_sdr(last_action_step_idea):
+
+    sdr_idea_serializer_local = SDRIdeaSerializer(1, 32, 32)
+    sdr_idea_serializer_local.dictionary = sdr_idea_serializer.dictionary
+
+    return sdr_idea_serializer_local.serialize(last_action_step_idea)
+    
 
 def create_button(gui, row, column, text, func=None, state=None):
     button = Button(gui, text=text, command=lambda:func(gui) if func else None, state=state if state else 'normal')
@@ -341,6 +355,9 @@ if __name__ == '__main__':
     global middle_pose_var
     global goal_pose_var
     global goal_intention_var
+    global plan_size_var
+    global occupied_nodes_var
+
 
     global clear_button
     global check_button
@@ -356,16 +373,28 @@ if __name__ == '__main__':
     sdr_idea_serializer = SDRIdeaSerializer(10, 32, 32)
     sdr_idea_deserializer = SDRIdeaDeserializer(sdr_idea_serializer.dictionary)
     
-    init_node_var = create_text_field(gui, 0, "Init Node:")
-    intermidiate_var = create_text_field(gui, 1, "Intermidiate Goal:")
-    final_goal_var = create_text_field(gui, 2, "Final Goal:")    
-    goal_intention_var = create_combo_box(gui, 3, "Goal Intention:", ['EXPLORATION', 'CHARGE', 'TRANSPORT'])
-    plan_size_var = create_text_field(gui, 4, "Plan Size:")    
+    init_node_var = create_text_field(gui, 0, "Initial Node:")
+    init_node_var.set("1.0")
+
+    occupied_nodes_var = create_text_field(gui, 1, "Occupied Nodes:")    
+    occupied_nodes_var.set("0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0")
+
+    plan_size_var = create_text_field(gui, 2, "Plan Size:")
+    plan_size_var.set("10.0")
+
+    intermidiate_var = create_text_field(gui, 3, "Middle Target:")
+    intermidiate_var.set("2.0,71.0,1.0")
+
+    final_goal_var = create_text_field(gui, 4, "Final Target:")   
+    final_goal_var.set("3.0,62.0,1.0")
+
+    # goal_intention_var = create_combo_box(gui, 3, "Goal Intention:", ['EXPLORATION', 'CHARGE', 'TRANSPORT'])
+    
     
     create_button(gui, 5, 0, "Load Graph File", open_json_file)
-    create_button(gui, 5, 1, "Load Dictionary File", open_dictionary_json_file)
-    create_button(gui, 6, 0, "Load Planner Model File", open_model_file)
-    create_button(gui, 6, 1, "Load ARTags File", open_artags_json_file)
+    create_button(gui, 5, 1, "Load ARTags File", open_artags_json_file)
+    create_button(gui, 6, 0, "Load Dictionary File", open_dictionary_json_file)
+    create_button(gui, 6, 1, "Load Planner Model File", open_model_file)
     
     clear_button = create_button(gui, 7, 0, "Clear Board", clear_board, 'disabled')
     check_button = create_button(gui, 7, 1, "Check Plan", check_state_plan, 'disabled')

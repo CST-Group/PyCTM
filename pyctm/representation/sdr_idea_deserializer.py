@@ -7,11 +7,13 @@ import struct
 
 class SDRIdeaDeserializer:
 
-    def __init__(self, dictionary, corrector_engine=None, to_raw=False):
+    def __init__(self, dictionary, corrector_engine=None, to_raw=False, positive_signal_value=0, negative_signal_value=1):
         self.dictionary = dictionary
         self.value_validation = ValueValidation()
         self.corrector_engine = corrector_engine
         self.to_raw = to_raw
+        self.positive_signal_value = positive_signal_value
+        self.negative_signal_value = negative_signal_value
     
     def deserialize(self, sdr):
 
@@ -210,8 +212,8 @@ class SDRIdeaDeserializer:
         value_signal_key = self.__get_signal(value_signal_sdr)
         base_signal_key = self.__get_signal(base_signal_sdr)
         
-        value_signal = 1 if int(value_signal_key) * -1 == 0 else -1
-        base_signal = 1 if int(base_signal_key) * -1 == 0 else -1
+        value_signal = -1 if int(value_signal_key) == self.negative_signal_value else 1
+        base_signal = -1 if int(base_signal_key) == self.negative_signal_value else 1
 
         number = float(value_string) * (10 ** (float(base)*base_signal)) * value_signal
 

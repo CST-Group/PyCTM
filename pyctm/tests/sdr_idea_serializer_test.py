@@ -47,12 +47,12 @@ class SDRIdeaSerializerTest(unittest.TestCase):
 
     def test_sdr_compability(self):
 
-        file = open("/opt/repository/dataTrainingShortSDR/dictionary.json")
+        file = open("/opt/repository/dataPlanSDR/dictionary.json")
 
         object=json.load(file)
         dictionary = Dictionary(**object)
 
-        sdr_idea_serializer = SDRIdeaSerializer(10, 32, 32)
+        sdr_idea_serializer = SDRIdeaSerializer(10, 32, 32, randomize=True, negative_signal_value=4, positive_signal_value=3)
         sdr_idea_serializer.dictionary = dictionary
 
 

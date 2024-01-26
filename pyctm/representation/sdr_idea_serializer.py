@@ -12,7 +12,7 @@ import struct
 
 class SDRIdeaSerializer():
 
-    def __init__(self, channels, rows, columns, default_value=0, active_value=1, dictionary=Dictionary(), to_raw=False):
+    def __init__(self, channels, rows, columns, default_value=0, active_value=1, dictionary=Dictionary(), to_raw=False, randomize=False, positive_signal_value=0, negative_signal_value=1):
         self.rows = rows
         self.columns = columns
         self.channels = channels
@@ -21,6 +21,9 @@ class SDRIdeaSerializer():
         self.dictionary = dictionary
         self.channel_counter = 1
         self.to_raw = to_raw
+        self.randomize = randomize
+        self.positive_signal_value = positive_signal_value
+        self.negative_signal_value = negative_signal_value
 
     def serialize(self, idea):
 
@@ -180,12 +183,12 @@ class SDRIdeaSerializer():
         for i in range(0, len(base_sdr)):
             sdr[channel, row+1, v_range+i] = base_sdr[i]
 
-        sinal_sdr = self.get_array_from_signal_values(1 if value < 0 else 0, v_range//4)
+        sinal_sdr = self.get_array_from_signal_values(self.negative_signal_value if value < 0 else self.positive_signal_value, v_range//4)
 
         for i in range(0, len(sinal_sdr)):
             sdr[channel, row+1, v_range + len(base_sdr) + i] = sinal_sdr[i]
 
-        base_signal_sdr = self.get_array_from_signal_values(1 if base < 0 else 0, v_range//4)
+        base_signal_sdr = self.get_array_from_signal_values(self.negative_signal_value if base < 0 else self.positive_signal_value, v_range//4)
 
         for i in range(0, len(base_signal_sdr)):
             sdr[channel, row+1, v_range + len(base_sdr) + len(sinal_sdr) + i] = base_signal_sdr[i]
@@ -235,7 +238,22 @@ class SDRIdeaSerializer():
             return array_value
 
     def generate_content(self, length, map):
-        return self.generate_content_max_hamming_distance(map.values(), length, length//2)
+        if self.randomize:
+            return self.generate_random_content(map.values(), length)
+        else:
+            return self.generate_content_max_hamming_distance(map.values(), length, length//2)
+    
+    def generate_random_content(self, existing_arrays, length_words):
+        new_array = [random.randint(5, 9) for _ in range(length_words)]
+
+        if not existing_arrays:
+            return new_array
+
+        for array in existing_arrays:
+            if new_array == array:
+                return self.generate_random_content(existing_arrays, length_words)
+
+        return new_array
     
     def generate_content_max_hamming_distance(self, existing_arrays, lenght_words, active_bits_in_words):
         
