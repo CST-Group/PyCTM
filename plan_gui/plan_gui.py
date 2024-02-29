@@ -8,10 +8,14 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 
-from gan_model.generator import Generator
+from gan_model.generator import CustomTransformerWithResiduals, beam_search
 from pyctm.correction_engines.naive_bayes_correction_engine import NaiveBayesCorrectorEngine
+from pyctm.representation.array_dictionary import ArrayDictionary
 from pyctm.representation.dictionary import Dictionary
 from pyctm.representation.idea import Idea
+from pyctm.representation.sdr_idea_array import SDRIdeaArray
+from pyctm.representation.sdr_idea_array_deserializer import SDRIdeaArrayDeserializer
+from pyctm.representation.sdr_idea_array_serializer import SDRIdeaArraySerializer
 from pyctm.representation.sdr_idea_deserializer import SDRIdeaDeserializer
 from pyctm.representation.sdr_idea_serializer import SDRIdeaSerializer
 
@@ -57,7 +61,7 @@ def open_dictionary_json_file(gui=None):
     file_path = askopenfile(mode='r', filetypes=[('Json File', '.json')])
     if file_path is not None:
         object=json.load(file_path)
-        dictionary = Dictionary(**object)
+        dictionary = ArrayDictionary(**object)
         sdr_idea_serializer.dictionary = dictionary
         sdr_idea_deserializer.dictionary = dictionary
 
@@ -66,7 +70,16 @@ def open_model_file(gui=None):
 
     file_path = askopenfile(mode='r', filetypes=[('Pytorch Model File', '.pth')])
     if file_path is not None:
-        generator_model = Generator(in_channels=10, features=128, image_size=32, control_size=32)
+        vocabulary_size = 34
+        d_model = 512 
+        nhead = 8  
+        num_encoder_layers = 2 
+        num_decoder_layers = 4 
+        dim_feedforward = 512  
+        dropout = 0.3  
+        max_seq_len = 626
+
+        generator_model = CustomTransformerWithResiduals(vocabulary_size, d_model, nhead, num_encoder_layers, num_decoder_layers, dim_feedforward, dropout, max_seq_len)
         generator_model.load_state_dict(torch.load(file_path.name, map_location=torch.device('cpu')))
         generator_model.eval()
         if clear_button['state'] == 'normal':
@@ -87,6 +100,11 @@ def draw_node(ax, node):
     ax.add_patch(circle)
     ax.annotate(node['id'], xy=(coordinates[0], coordinates[1]), fontsize=12, ha="center")
 
+def random_value(gui=None):
+    action_var.set("PICK" if np.random.randint(0,2) == 1 else "PLACE")
+    init_position_var.set(str(float(np.random.randint(1, 17) if action_var.get() == 'PICK' else np.random.randint(1, 188))))
+    goal_tag_var.set(str(float(np.random.randint(0, 188))))
+    relative_position_var.set(str(float(np.random.randint(1, 5))))
 
 def clear_board(gui=None):
 
@@ -101,7 +119,7 @@ def clear_board(gui=None):
 def create_gui():
     gui = Tk()
     gui.title("Plan Generated Test.")
-    gui.geometry("400x380")
+    gui.geometry("680x320")
 
     return gui
 
@@ -116,24 +134,67 @@ def create_text_field(gui, row, label):
 
     return current_var
 
-def create_combo_box(gui, row, label, list):
+def create_text_field_with_column(gui, row, column, label):
+    label_text = Label(gui, text=label, anchor='w')
+    label_text.grid(row=row, column=column)
+
+    current_var = StringVar()
+
+    entry = Entry(gui, textvariable=current_var)
+    entry.grid(row=row, column=column+1, sticky='W')
+
+    return current_var
+
+def create_combo_box(gui, row, column, label, list):
 
     label_text = Label(gui, text=label, anchor='w')
-    label_text.grid(row=row, column=0)
+    label_text.grid(row=row, column=column)
 
     current_var = StringVar()
 
     combobox = ttk.Combobox(gui, textvariable=current_var)
     combobox["values"] = list
 
-    combobox.grid(row=row, column=1, sticky='W')
+    combobox.grid(row=row, column=column+1, sticky='W')
 
     return current_var
 
-def check_state_plan(gui=None):
+def create_check_box(gui, row, label):
 
-    prepare_correction_engine()
-    list_actions = []
+    label_text = Label(gui, text=label, anchor='w')
+    label_text.grid(row=row, column=0)
+
+    current_var = StringVar()
+
+    checkbox = ttk.Checkbutton(gui, textvariable=current_var, onvalue=True, offvalue=False)
+    checkbox.grid(row=row, column=1, sticky='W')
+
+    return current_var
+
+def create_multiples_check_box(gui, row):
+    for i in range(16):
+        ttk.Checkbutton(gui, text=str(i+1), variable=check_vars[i], command=update_checked_numbers).grid(row=row+i//4, column=i%4, sticky='w')
+
+def create_label(gui, row, label):
+    label_text = Label(gui, text=label, anchor='w')
+    label_text.grid(row=row, column=0)
+
+def create_button(gui, row, column, text, func=None, state=None):
+    button = Button(gui, text=text, command=lambda:func(gui) if func else None, state=state if state else 'normal')
+    button.grid(row=row, column=column, pady=3)
+
+    return button
+
+def update_checked_numbers():
+    global checked_numbers_var
+
+    checked_numbers_var.clear()
+    
+    for i, var in enumerate(check_vars):
+        if var.get():
+            checked_numbers_var.append(float(i+1))
+
+def check_state_plan(gui=None):
 
     if new_window is not None:
         new_window.destroy()
@@ -144,81 +205,34 @@ def check_state_plan(gui=None):
 
     sdr_goal_idea = sdr_idea_serializer.serialize(goal_idea)
 
-    sdr_goal_tensor = torch.from_numpy(sdr_goal_idea.sdr).view(1, 10, 32, 32)
-    sdr_goal_tensor = sdr_goal_tensor.float()
-
-    control =  torch.from_numpy(np.asarray([float(plan_size_var.get())] + [float(i) for i in occupied_nodes_var.get().split(',')])).float()
-    control = control.unsqueeze(0)
-
-    control = F.pad(control, (0, 32 - control.size(1)), "constant", 0.0).float()
-
-    sdr_action_step_tensor = torch.argmax(generator_model(sdr_goal_tensor, control).view(1, 2, 32, 32).detach(), dim=1).view(1, 1, 32, 32)
-
-    action_step_idea = sdr_idea_deserializer.deserialize(sdr_action_step_tensor[0].detach().numpy())
+    converted_sdr = []
+    for element in sdr_goal_idea.sdr:
+        converted_sdr.append(float(element))
     
-    id_index = 6
+    sdr_goal_tensor = torch.from_numpy(np.array(converted_sdr)).view(1, 626)
+    sdr_goal_tensor = sdr_goal_tensor.long()
 
-    action_step_idea.id = id_index
-    action_step_idea.type = 1.0
+    generate_plan_tensor = beam_search(model=generator_model, src=sdr_goal_tensor, start_symbol=1, end_symbol=2, max_len=626, beam_size=1, temperature=1, device='cpu')
+    generate_plan = generate_plan_tensor[0].cpu().numpy().tolist()
 
-    goal_idea.child_ideas[-1].add(action_step_idea)
-    list_actions.append(action_step_idea)
+    plan_idea_array = SDRIdeaArray(10, 7, 0)
+    plan_idea_array.sdr = generate_plan
 
-    print("%s - Action: %s - Value: %s" % (action_step_idea.id, action_step_idea.name, action_step_idea.value))
+    plan_idea = sdr_idea_deserializer.deserialize(plan_idea_array)
 
-    for i in range(20):
-        if action_step_idea.name != 'stop':
+    list_actions = [plan_idea]
+    print(f'{plan_idea.name} - {plan_idea.value}')
 
-            sdr_goal_idea = sdr_idea_serializer.serialize(goal_idea)
+    for i in range(len(plan_idea.child_ideas)):
+        print(f'{plan_idea.child_ideas[i].name} - {plan_idea.child_ideas[i].value}')
+        list_actions.append(plan_idea.child_ideas[i])
 
-            sdr_goal_tensor = torch.from_numpy(sdr_goal_idea.sdr).view(1, 10, 32, 32)   
-            sdr_goal_tensor = sdr_goal_tensor.float()
-
-            # full_control = torch.randn(1, 64).float()
-            sdr_action_step_tensor = torch.argmax(generator_model(sdr_goal_tensor, control).view(1, 2, 32, 32).detach(), dim=1).view(1, 1, 32, 32)
-
-            new_action_step_idea = sdr_idea_deserializer.deserialize(sdr_action_step_tensor[0].detach().numpy())
-            id_index+=1
-
-            new_action_step_idea.id = id_index
-            new_action_step_idea.type = 1.0
-
-            action_step_idea = new_action_step_idea
-
-            goal_idea.child_ideas[-1].add(action_step_idea)
-
-            if len(goal_idea.child_ideas[-1].child_ideas) > 5:
-                goal_idea.child_ideas[-1].child_ideas.pop(0)
-            
-            list_actions.append(action_step_idea)
-
-            print("%s - Action: %s - Value: %s" % (new_action_step_idea.id, new_action_step_idea.name, new_action_step_idea.value))
-        
-        else:
-            break
-
-    
-    print("Total of Steps:" + str(len(list_actions) + 1))
+    print("Total of Steps:" + str(len(list_actions)))
 
     draw_plan(list_actions=list_actions)
 
     figure_canvas = FigureCanvasTkAgg(figure, new_window)
     figure_canvas.get_tk_widget().pack(side=LEFT, fill=BOTH)
-
-def prepare_correction_engine():
-    correction_engine = NaiveBayesCorrectorEngine(sdr_idea_serializer.dictionary)
-    sdr_idea_deserializer.corrector_engine = correction_engine
-
-
-def save_to_test(sdr_plan_tensor):
-    plan_generated_dic = {
-        'realPlan': sdr_plan_tensor.view(16,32,32).detach().tolist(),
-        'fakePlan': []
-    }
-
-    with open('./pix2pix_plan_generated_local.json', 'w') as write_file:
-        json.dump(plan_generated_dic, write_file)
-
 
 def draw_plan(list_actions):
     
@@ -232,11 +246,16 @@ def draw_plan(list_actions):
             if i != 0 and list_actions[i-1].name != 'idle':
                 previous_idea = list_actions[i-1]
             else:
-                nodes = graph["nodes"]
-                for node in nodes:
-                    if float(node["id"]) == float(init_node_var.get()):
-                       draw_line((node['coordinates'])[0], (node['coordinates'])[1], idea_pose[0], idea_pose[1], 'r')
-                       draw_point((node['coordinates'])[0], (node['coordinates'])[1], "%i" % int(float(init_node_var.get())), 'green', True)
+                if action_var.get() == 'PICK':
+                    nodes = graph["nodes"]
+                    for node in nodes:
+                        if float(node["id"]) == float(init_position_var.get()):
+                           draw_line((node['coordinates'])[0], (node['coordinates'])[1], idea_pose[0], idea_pose[1], 'r')
+                           draw_point((node['coordinates'])[0], (node['coordinates'])[1], "%i" % int(float(init_position_var.get())), 'green', True)
+                else:
+                    artag = get_artag(float(init_position_var.get()))
+                    draw_line((artag['pose'])[0], (artag['pose'])[1], idea_pose[0], idea_pose[1], 'r')
+                    draw_point((artag['pose'])[0], (artag['pose'])[1], "%i" % int(float(init_position_var.get())), 'green', True)
 
             if previous_idea is not None:
                 previous_idea_pose = get_position_from_idea(previous_idea)
@@ -291,37 +310,37 @@ def draw_line(x_i, y_i, x_f, y_f, color):
     ax.add_patch(arrow)
 
 def create_goal_idea():
-    #goal_idea = Idea(_id=0, name="Goal", value=float(goal_intention_value(goal_intention_var.get())), _type=0.0)
-    goal_idea = Idea(_id=0, name="Goal", value="", _type=0)
-    init_node_idea = Idea(_id=1, name="initialNode", value=float(init_node_var.get()), _type=1)
-    intermidiate_idea = Idea(_id=2, name="middleTarget", value=[float(i) for i in intermidiate_var.get().split(',')], _type=1)
-    final_goal_idea = Idea(_id=3, name="finalTarget", value=[float(i) for i in final_goal_var.get().split(',')], _type=1)
-    context_idea = Idea(_id=4, name="actionSteps", value="", _type=0)
+    goal_idea = Idea(_id=0, name="goal", value="", _type=1)
+
+    init_node_idea = None
+    goal_action_idea = None
+
+    if action_var.get() == 'PICK':
+        init_node_idea = Idea(_id=1, name="initialNode", value=float(init_position_var.get()), _type=1)
+        goal_action_idea = Idea(_id=2, name="goalAction", value=2.0, _type=1)
+    else:
+        init_node_idea = Idea(_id=1, name="initialTag", value=float(init_position_var.get()), _type=1)
+        goal_action_idea = Idea(_id=2, name="goalAction", value=3.0, _type=1)
+
+    
+    goal_tag_idea = Idea(_id=3, name="goalTag", value=float(goal_tag_var.get()), _type=1)
+    goal_slot_idea = Idea(_id=4, name="goalSlot", value=float(relative_position_var.get()), _type=1)
+    total_steps_idea = Idea(_id=5, name="totalSteps", value=float(plan_total_steps_var.get()), _type=1)
+
+    occupied_nodes_idea = None
+    if len(checked_numbers_var) == 0:
+        occupied_nodes_idea = Idea(_id=6, name="occupiedNodes", value="", _type=1)    
+    else:
+        occupied_nodes_idea = Idea(_id=6, name="occupiedNodes", value=[float(i) for i in checked_numbers_var], _type=1)
     
     goal_idea.add(init_node_idea)
-    goal_idea.add(intermidiate_idea)
-    goal_idea.add(final_goal_idea)
-
-    context_idea.add(Idea(_id=5, name='idle', value="", _type=1))
-
-    goal_idea.add(context_idea)
+    goal_idea.add(goal_action_idea)
+    goal_idea.add(goal_tag_idea)
+    goal_idea.add(goal_slot_idea)
+    goal_idea.add(total_steps_idea)
+    goal_idea.add(occupied_nodes_idea)
 
     return goal_idea
-
-
-def get_last_action_step_sdr(last_action_step_idea):
-
-    sdr_idea_serializer_local = SDRIdeaSerializer(1, 32, 32)
-    sdr_idea_serializer_local.dictionary = sdr_idea_serializer.dictionary
-
-    return sdr_idea_serializer_local.serialize(last_action_step_idea)
-    
-
-def create_button(gui, row, column, text, func=None, state=None):
-    button = Button(gui, text=text, command=lambda:func(gui) if func else None, state=state if state else 'normal')
-    button.grid(row=row, column=column, pady=3)
-
-    return button
 
 def compare_sdr(goal, target):
         for i in range(10):
@@ -351,16 +370,22 @@ if __name__ == '__main__':
     global ax
     global figure
 
-    global init_pose_var
-    global middle_pose_var
-    global goal_pose_var
-    global goal_intention_var
-    global plan_size_var
-    global occupied_nodes_var
+    global action_var
+    global init_position_var
+    global goal_tag_var
+    global relative_position_var
+    global plan_total_steps_var
+
+    global checked_numbers_var
+    checked_numbers_var = []
+
+    global check_vars 
+    check_vars = [BooleanVar() for _ in range(16)]
 
 
     global clear_button
     global check_button
+    global random_button
 
     global sdr_idea_serializer
     global sdr_idea_deserializer
@@ -370,34 +395,36 @@ if __name__ == '__main__':
     ax = None
     figure = None
 
-    sdr_idea_serializer = SDRIdeaSerializer(10, 32, 32)
-    sdr_idea_deserializer = SDRIdeaDeserializer(sdr_idea_serializer.dictionary)
+    sdr_idea_serializer = SDRIdeaArraySerializer(total_of_ideas=10, total_of_values=7, default_value=0)
+    sdr_idea_deserializer = SDRIdeaArrayDeserializer(sdr_idea_serializer.dictionary)
+
+    create_label(gui, 0, "Occupied Nodes:")
+    create_multiples_check_box(gui, 1)
+
+    action_var = create_combo_box(gui, 7, 0, "Action:", ['PICK', 'PLACE'])
+    action_var.set("PICK")
+
+    init_position_var = create_text_field_with_column(gui, 8, 0, "Initial Tag/Node:")
+    init_position_var.set("1.0")
+
+    goal_tag_var = create_text_field_with_column(gui, 8, 2, "Goal Tag:")
+    goal_tag_var.set("71.0")
+
+    relative_position_var = create_text_field_with_column(gui, 9, 0, "Goal Relative Position:")
+    relative_position_var.set("1.0")
+
+    plan_total_steps_var = create_text_field_with_column(gui, 9, 2, "Plan Total Steps:")
+    plan_total_steps_var.set("10.0")
     
-    init_node_var = create_text_field(gui, 0, "Initial Node:")
-    init_node_var.set("1.0")
-
-    occupied_nodes_var = create_text_field(gui, 1, "Occupied Nodes:")    
-    occupied_nodes_var.set("0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0")
-
-    plan_size_var = create_text_field(gui, 2, "Plan Size:")
-    plan_size_var.set("10.0")
-
-    intermidiate_var = create_text_field(gui, 3, "Middle Target:")
-    intermidiate_var.set("2.0,71.0,1.0")
-
-    final_goal_var = create_text_field(gui, 4, "Final Target:")   
-    final_goal_var.set("3.0,62.0,1.0")
-
-    # goal_intention_var = create_combo_box(gui, 3, "Goal Intention:", ['EXPLORATION', 'CHARGE', 'TRANSPORT'])
+    create_button(gui, 10, 0, "Load Graph File", open_json_file)
+    create_button(gui, 10, 1, "Load ARTags File", open_artags_json_file)
+    create_button(gui, 10, 2, "Load Dictionary File", open_dictionary_json_file)
+    create_button(gui, 10, 3, "Load Planner Model File", open_model_file)
     
-    
-    create_button(gui, 5, 0, "Load Graph File", open_json_file)
-    create_button(gui, 5, 1, "Load ARTags File", open_artags_json_file)
-    create_button(gui, 6, 0, "Load Dictionary File", open_dictionary_json_file)
-    create_button(gui, 6, 1, "Load Planner Model File", open_model_file)
-    
-    clear_button = create_button(gui, 7, 0, "Clear Board", clear_board, 'disabled')
-    check_button = create_button(gui, 7, 1, "Check Plan", check_state_plan, 'disabled')
+    clear_button = create_button(gui, 11, 1, "Clear Board", clear_board, 'disabled')
+    check_button = create_button(gui, 11, 2, "Check Plan", check_state_plan, 'disabled')
+
+    random_button = create_button(gui, 11, 3, "Random", random_value, 'normal')
 
     gui.mainloop()
 
