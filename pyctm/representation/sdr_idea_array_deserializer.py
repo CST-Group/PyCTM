@@ -66,6 +66,49 @@ class SDRIdeaArrayDeserializer:
 
         return idea_list[0] if idea_list else None
 
+    def get_local_numeric_value(self, sdr):
+        index = 0
+        value_string = ""
+
+        for i in range(3):
+            value_string += str(int(self.dictionary.words[str(sdr[index + i])]))
+
+        index += 3
+
+        value_string = f"{value_string[0]}.{value_string[1]}{value_string[2]}"
+
+        signal = self.dictionary.words[str(sdr[index])]
+        index += 1
+        base = int(self.dictionary.words[str(sdr[index])])
+        index += 1
+        base_signal = self.dictionary.words[str(sdr[index])]
+        index += 1
+
+        value = float(value_string) * (10 ** (base * (1 if base_signal == "+" else -1)))
+        value = value if signal == "+" else -value
+        value = round(value, 2)
+
+        return value
+    
+    def get_local_string_value(self, index):
+        value = self.dictionary.words[str(index)]
+        return value
+    
+    def get_metadata_type(self, metadata_value):
+        idea_metadata_values = IdeaMetadataValues()
+        metadata_map = idea_metadata_values.get_metadata_map()
+        for clazz, metadata in metadata_map.items():
+            if metadata == metadata_value:
+                if ArrayValueValidation.is_array(clazz):
+                    if "list_str" == clazz:
+                        return "STRING_ARRAY"
+                    else:
+                        return "NUM_ARRAY"
+                elif ArrayValueValidation.is_primitive(clazz):
+                    return "NUM_VALUE"
+                elif ArrayValueValidation.is_string(clazz):
+                    return "STRING_VALUE"
+
     def get_numeric_value(self, sdr):
         value_string = ""
 

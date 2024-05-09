@@ -7,14 +7,16 @@ import json
 import torch
 import numpy as np
 import torch.nn.functional as F
+from scipy.spatial import distance
 
-from gan_model.generator import CustomTransformerWithResiduals, beam_search
+from gan_model.generator import PlanningTransformer, beam_search
 from pyctm.correction_engines.naive_bayes_correction_engine import NaiveBayesCorrectorEngine
 from pyctm.representation.array_dictionary import ArrayDictionary
 from pyctm.representation.dictionary import Dictionary
 from pyctm.representation.idea import Idea
 from pyctm.representation.sdr_idea_array import SDRIdeaArray
 from pyctm.representation.sdr_idea_array_deserializer import SDRIdeaArrayDeserializer
+from pyctm.representation.sdr_idea_array_predictor import SDRIdeaArrayPredictor
 from pyctm.representation.sdr_idea_array_serializer import SDRIdeaArraySerializer
 from pyctm.representation.sdr_idea_deserializer import SDRIdeaDeserializer
 from pyctm.representation.sdr_idea_serializer import SDRIdeaSerializer
@@ -70,16 +72,16 @@ def open_model_file(gui=None):
 
     file_path = askopenfile(mode='r', filetypes=[('Pytorch Model File', '.pth')])
     if file_path is not None:
-        vocabulary_size = 34
-        d_model = 512 
-        nhead = 8  
+        vocabulary_size = 33
+        d_model = 768 
+        nhead = 12  
         num_encoder_layers = 2 
         num_decoder_layers = 4 
-        dim_feedforward = 512  
+        dim_feedforward = 768  
         dropout = 0.3  
         max_seq_len = 626
 
-        generator_model = CustomTransformerWithResiduals(vocabulary_size, d_model, nhead, num_encoder_layers, num_decoder_layers, dim_feedforward, dropout, max_seq_len)
+        generator_model = PlanningTransformer(vocabulary_size, d_model, nhead, num_encoder_layers, num_decoder_layers, dim_feedforward, dropout, max_seq_len)
         generator_model.load_state_dict(torch.load(file_path.name, map_location=torch.device('cpu')))
         generator_model.eval()
         if clear_button['state'] == 'normal':
@@ -212,7 +214,15 @@ def check_state_plan(gui=None):
     sdr_goal_tensor = torch.from_numpy(np.array(converted_sdr)).view(1, 626)
     sdr_goal_tensor = sdr_goal_tensor.long()
 
-    generate_plan_tensor = beam_search(model=generator_model, src=sdr_goal_tensor, start_symbol=1, end_symbol=2, max_len=626, beam_size=1, temperature=1, device='cpu')
+    occupied_nodes = [float(i) for i in checked_numbers_var]
+    artag = get_artag(float(goal_tag_var.get()))
+    
+    closest_nodes = find_closest_nodes(artag["pose"], graph["nodes"], occupied_nodes, top=3)
+
+    sdr_idea_array_predictor = SDRIdeaArrayPredictor(sdr_idea_deserializer=sdr_idea_deserializer)
+
+    # generate_plan_tensor = beam_search(model=generator_model, src=sdr_goal_tensor, start_symbol=1, end_symbol=2, max_len=626, beam_size=5, temperature=0.25, sdr_idea_deserializer=sdr_idea_deserializer, device='cpu')
+    generate_plan_tensor = sdr_idea_array_predictor.beam_search(model=generator_model, src=sdr_goal_tensor, start_symbol=1, end_symbol=2, max_len=626, beam_size=int(beam_size_var.get()), temperature=float(temperature_var.get()), sdr_idea_deserializer=sdr_idea_deserializer, device='cpu', occupiedNodes=occupied_nodes, initial_node=float(init_position_var.get()), closest_nodes_from_goal_tag=closest_nodes, action=action_var.get())
     generate_plan = generate_plan_tensor[0].cpu().numpy().tolist()
 
     plan_idea_array = SDRIdeaArray(10, 7, 0)
@@ -325,35 +335,22 @@ def create_goal_idea():
     
     goal_tag_idea = Idea(_id=3, name="goalTag", value=float(goal_tag_var.get()), _type=1)
     goal_slot_idea = Idea(_id=4, name="goalSlot", value=float(relative_position_var.get()), _type=1)
-    total_steps_idea = Idea(_id=5, name="totalSteps", value=float(plan_total_steps_var.get()), _type=1)
-
-    occupied_nodes_idea = None
-    if len(checked_numbers_var) == 0:
-        occupied_nodes_idea = Idea(_id=6, name="occupiedNodes", value="", _type=1)    
-    else:
-        occupied_nodes_idea = Idea(_id=6, name="occupiedNodes", value=[float(i) for i in checked_numbers_var], _type=1)
     
     goal_idea.add(init_node_idea)
     goal_idea.add(goal_action_idea)
     goal_idea.add(goal_tag_idea)
     goal_idea.add(goal_slot_idea)
-    goal_idea.add(total_steps_idea)
-    goal_idea.add(occupied_nodes_idea)
+
+    occupied_nodes_idea = None
+    if len(checked_numbers_var) != 0:
+       occupied_nodes = [float(i) for i in checked_numbers_var]
+       occupied_nodes.sort()
+       occupied_nodes_idea = Idea(_id=5, name="occupiedNodes", value=occupied_nodes, _type=1)
+       goal_idea.add(occupied_nodes_idea)
+
+    print(json.dumps(goal_idea, default=lambda o: getattr(o, '__dict__', str(o))))
 
     return goal_idea
-
-def compare_sdr(goal, target):
-        for i in range(10):
-            print("Channel:" + str(i) + " OK!")
-            for j in range(32):
-                for k in range(32):
-                    if goal[i,j,k] != target[0][i][j][k]:
-                        print("Channel:" + str(i))
-                        print("Row:" + str(j))
-                        print("Collumn:" + str(k))
-                        return False
-                    
-        return True
 
 def goal_intention_value(goal_intention):
     if goal_intention == 'TRANSPORT':
@@ -362,6 +359,87 @@ def goal_intention_value(goal_intention):
         return float(2.0)
     else:
         return float(3.0)
+
+def calculate_distance(coord1, coord2):
+    return np.linalg.norm(np.array(coord1) - np.array(coord2[:3]))
+
+def distance_to_edge(coord, edge):
+    # Convertendo a coordenada para um array numpy
+    coord = np.array(coord)
+    
+    # Obtendo os pontos finais da aresta
+    start = np.array(edge[0])
+    end = np.array(edge[1])
+    
+    # Vetor que representa a aresta
+    edge_vector = end - start
+    
+    # Vetor que representa a diferença entre a coordenada e o ponto inicial da aresta
+    coord_vector = coord - start
+    
+    # Projeta a coordenada no vetor da aresta
+    projection = np.dot(coord_vector, edge_vector) / np.dot(edge_vector, edge_vector)
+    
+    # Verifica se a projeção é um array ou um valor escalar
+    if np.isscalar(projection):
+        if projection <= 0:
+            # O ponto de projeção está antes do início da aresta
+            return np.linalg.norm(coord - start)
+        elif projection >= 1:
+            # O ponto de projeção está além do final da aresta
+            return np.linalg.norm(coord - end)
+        else:
+            # O ponto de projeção está na linha da aresta
+            projected_point = start + projection * edge_vector
+            return np.linalg.norm(coord - projected_point)
+    else:
+        # Se a projeção for um array, retorne uma lista de distâncias
+        distances = []
+        for proj in projection:
+            if proj <= 0:
+                distances.append(np.linalg.norm(coord - start))
+            elif proj >= 1:
+                distances.append(np.linalg.norm(coord - end))
+            else:
+                projected_point = start + proj * edge_vector
+                distances.append(np.linalg.norm(coord - projected_point))
+        return min(distances)
+
+def find_closest_nodes(target_coord, all_nodes, occupied_nodes, top=3):
+    distances = []
+    
+    # Calcula as distâncias para todos os nós
+    for node in all_nodes:
+        node_id = node['id']
+        if node_id not in occupied_nodes:
+            dist = calculate_distance(node['coordinates'], target_coord)
+            distances.append((node_id, dist))
+
+    # Ordena as distâncias
+    distances.sort(key=lambda x: x[1])
+    
+    # Filtra os nós mais próximos que não estão ocupados
+    closest_nodes = [node for node in distances][:top]
+    
+    # Calcula a distância das arestas dos nós selecionados
+    #for node_id, _ in closest_nodes:
+    #    node = next((n for n in all_nodes if n['id'] == node_id), None)
+    #    if node:
+    #        for connected_node_id in node['connected']:
+    #            if connected_node_id not in occupied_nodes:
+    #                connected_node = next((n for n in all_nodes if n['id'] == connected_node_id), None)
+    #                if connected_node:
+    #                    for edge in zip(node['coordinates'], connected_node['coordinates']):
+    #                        dist_to_edge = distance_to_edge(target_coord, edge)
+    #                        distances.append((connected_node_id, dist_to_edge))
+    
+    # Ordena novamente as distâncias
+    #distances.sort(key=lambda x: x[1])
+    
+    # Retorna os top nós mais próximos após considerar as distâncias das arestas
+    #closest_nodes = [node for node in distances][:top]
+    
+    return closest_nodes
 
 if __name__ == '__main__':
     gui = create_gui()
@@ -373,8 +451,7 @@ if __name__ == '__main__':
     global action_var
     global init_position_var
     global goal_tag_var
-    global relative_position_var
-    global plan_total_steps_var
+    global relative_position_var    
 
     global checked_numbers_var
     checked_numbers_var = []
@@ -413,18 +490,21 @@ if __name__ == '__main__':
     relative_position_var = create_text_field_with_column(gui, 9, 0, "Goal Relative Position:")
     relative_position_var.set("1.0")
 
-    plan_total_steps_var = create_text_field_with_column(gui, 9, 2, "Plan Total Steps:")
-    plan_total_steps_var.set("10.0")
-    
-    create_button(gui, 10, 0, "Load Graph File", open_json_file)
-    create_button(gui, 10, 1, "Load ARTags File", open_artags_json_file)
-    create_button(gui, 10, 2, "Load Dictionary File", open_dictionary_json_file)
-    create_button(gui, 10, 3, "Load Planner Model File", open_model_file)
-    
-    clear_button = create_button(gui, 11, 1, "Clear Board", clear_board, 'disabled')
-    check_button = create_button(gui, 11, 2, "Check Plan", check_state_plan, 'disabled')
+    beam_size_var = create_text_field_with_column(gui, 10, 0, "Beam Size:")
+    beam_size_var.set("15")
 
-    random_button = create_button(gui, 11, 3, "Random", random_value, 'normal')
+    temperature_var = create_text_field_with_column(gui, 10, 2, "Temperature:")
+    temperature_var.set("0.5")
+    
+    create_button(gui, 11, 0, "Load Graph File", open_json_file)
+    create_button(gui, 11, 1, "Load ARTags File", open_artags_json_file)
+    create_button(gui, 11, 2, "Load Dictionary File", open_dictionary_json_file)
+    create_button(gui, 11, 3, "Load Planner Model File", open_model_file)
+    
+    clear_button = create_button(gui, 12, 1, "Clear Board", clear_board, 'disabled')
+    check_button = create_button(gui, 12, 2, "Check Plan", check_state_plan, 'disabled')
+
+    random_button = create_button(gui, 12, 3, "Random", random_value, 'normal')
 
     gui.mainloop()
 
