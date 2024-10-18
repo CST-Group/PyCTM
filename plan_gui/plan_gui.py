@@ -79,7 +79,7 @@ def open_model_file(gui=None):
         num_decoder_layers = 4 
         dim_feedforward = 768  
         dropout = 0.3  
-        max_seq_len = 626
+        max_seq_len = 374
 
         generator_model = PlanningTransformer(vocabulary_size, d_model, nhead, num_encoder_layers, num_decoder_layers, dim_feedforward, dropout, max_seq_len)
         generator_model.load_state_dict(torch.load(file_path.name, map_location=torch.device('cpu')))
@@ -211,7 +211,7 @@ def check_state_plan(gui=None):
     for element in sdr_goal_idea.sdr:
         converted_sdr.append(float(element))
     
-    sdr_goal_tensor = torch.from_numpy(np.array(converted_sdr)).view(1, 626)
+    sdr_goal_tensor = torch.from_numpy(np.array(converted_sdr)).view(1, 374)
     sdr_goal_tensor = sdr_goal_tensor.long()
 
     occupied_nodes = [float(i) for i in checked_numbers_var]
@@ -222,10 +222,10 @@ def check_state_plan(gui=None):
     sdr_idea_array_predictor = SDRIdeaArrayPredictor(sdr_idea_deserializer=sdr_idea_deserializer)
 
     # generate_plan_tensor = beam_search(model=generator_model, src=sdr_goal_tensor, start_symbol=1, end_symbol=2, max_len=626, beam_size=5, temperature=0.25, sdr_idea_deserializer=sdr_idea_deserializer, device='cpu')
-    generate_plan_tensor = sdr_idea_array_predictor.beam_search(model=generator_model, src=sdr_goal_tensor, start_symbol=1, end_symbol=2, max_len=626, beam_size=int(beam_size_var.get()), temperature=float(temperature_var.get()), sdr_idea_deserializer=sdr_idea_deserializer, device='cpu', occupiedNodes=occupied_nodes, initial_node=float(init_position_var.get()), closest_nodes_from_goal_tag=closest_nodes, action=action_var.get())
+    generate_plan_tensor = sdr_idea_array_predictor.beam_search(model=generator_model, src=sdr_goal_tensor, start_symbol=1, end_symbol=2, max_len=374, beam_size=int(beam_size_var.get()), temperature=float(temperature_var.get()), sdr_idea_deserializer=sdr_idea_deserializer, device='cpu', occupiedNodes=occupied_nodes, initial_node=float(init_position_var.get()), closest_nodes_from_goal_tag=closest_nodes, action=action_var.get())
     generate_plan = generate_plan_tensor[0].cpu().numpy().tolist()
 
-    plan_idea_array = SDRIdeaArray(10, 7, 0)
+    plan_idea_array = SDRIdeaArray(6, 7, 0)
     plan_idea_array.sdr = generate_plan
 
     plan_idea = sdr_idea_deserializer.deserialize(plan_idea_array)
@@ -472,7 +472,7 @@ if __name__ == '__main__':
     ax = None
     figure = None
 
-    sdr_idea_serializer = SDRIdeaArraySerializer(total_of_ideas=10, total_of_values=7, default_value=0)
+    sdr_idea_serializer = SDRIdeaArraySerializer(total_of_ideas=6, total_of_values=7, default_value=0)
     sdr_idea_deserializer = SDRIdeaArrayDeserializer(sdr_idea_serializer.dictionary)
 
     create_label(gui, 0, "Occupied Nodes:")
@@ -491,10 +491,10 @@ if __name__ == '__main__':
     relative_position_var.set("1.0")
 
     beam_size_var = create_text_field_with_column(gui, 10, 0, "Beam Size:")
-    beam_size_var.set("15")
+    beam_size_var.set("2")
 
     temperature_var = create_text_field_with_column(gui, 10, 2, "Temperature:")
-    temperature_var.set("0.5")
+    temperature_var.set("1.0")
     
     create_button(gui, 11, 0, "Load Graph File", open_json_file)
     create_button(gui, 11, 1, "Load ARTags File", open_artags_json_file)

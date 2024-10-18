@@ -18,6 +18,8 @@ class SDRIdeaArrayPredictor:
         steps = self.get_steps(states[0])
         beam = [(ys, 0.0, 7.0, False, states, steps)]
         finished_beams = []
+
+        sdr_idea_deserializer.convert_dictionary_key_to_string()
     
         for i in range(max_len):
         

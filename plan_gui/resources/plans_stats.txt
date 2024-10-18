@@ -1,0 +1,9 @@
+Total of Pick Plans:127799
+Total of Pick Plans with Occupied Nodes:97879
+Total of Impossible Pick Plans with Occupied Nodes:0
+Total of Place Plans:122080
+Total of Place Plans with Occupied Nodes:92160
+Total of Impossible Place Plans with Occupied Nodes:0
+Total of Goals:249879
+Total of Plans:249879
+###################--Finish plans generations--###################

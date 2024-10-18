@@ -66,6 +66,10 @@ class SDRIdeaArrayDeserializer:
 
         return idea_list[0] if idea_list else None
 
+    def convert_dictionary_key_to_string(self):
+        if self.dictionary is not None:
+            self.dictionary.words = {str(key): value for key, value in self.dictionary.words.items()}
+
     def get_local_numeric_value(self, sdr):
         index = 0
         value_string = ""
