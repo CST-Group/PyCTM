@@ -14,8 +14,10 @@ class SDRIdeaArrayDeserializer:
         self.dictionary = dictionary
 
         if self.dictionary is not None:
-            self.dictionary.words = {int(key): value for key, value in self.dictionary.words.items()}
-            
+            self.dictionary.words = {
+                int(key): value for key, value in self.dictionary.words.items()
+            }
+
         self.value_converter = ArrayValueConverter()
         self.index = 0
         self.start_word = 1
@@ -32,7 +34,9 @@ class SDRIdeaArrayDeserializer:
         self.index = 0
 
         if self.dictionary is not None:
-            self.dictionary.words = {int(key): value for key, value in self.dictionary.words.items()}
+            self.dictionary.words = {
+                int(key): value for key, value in self.dictionary.words.items()
+            }
 
         while self.index < len(sdr):
             if sdr[self.index] == self.start_word:
@@ -45,9 +49,11 @@ class SDRIdeaArrayDeserializer:
 
             parent_id = None
             if idea_list:
-                parent_id = self.get_value_according_type(self.get_numeric_value(sdr), 'long')
+                parent_id = self.get_value_according_type(
+                    self.get_numeric_value(sdr), "long"
+                )
 
-            idea.id = self.get_value_according_type(self.get_numeric_value(sdr), 'long')
+            idea.id = self.get_value_according_type(self.get_numeric_value(sdr), "long")
             idea.name = self.get_string_value(sdr)
             idea.type = int(self.get_string_value(sdr))
             idea.value = self.get_value(sdr)
@@ -58,9 +64,15 @@ class SDRIdeaArrayDeserializer:
             idea_list.append(idea)
 
         for idea_element in idea_list:
-            relations = [relation for relation in idea_relationship.items() if relation[1] == idea_element.id]
+            relations = [
+                relation
+                for relation in idea_relationship.items()
+                if relation[1] == idea_element.id
+            ]
             for relation in relations:
-                child_idea = next((idea for idea in idea_list if idea.id == relation[0]), None)
+                child_idea = next(
+                    (idea for idea in idea_list if idea.id == relation[0]), None
+                )
                 if child_idea:
                     idea_element.child_ideas.append(child_idea)
 
@@ -68,7 +80,9 @@ class SDRIdeaArrayDeserializer:
 
     def convert_dictionary_key_to_string(self):
         if self.dictionary is not None:
-            self.dictionary.words = {str(key): value for key, value in self.dictionary.words.items()}
+            self.dictionary.words = {
+                str(key): value for key, value in self.dictionary.words.items()
+            }
 
     def get_local_numeric_value(self, sdr):
         index = 0
@@ -93,11 +107,11 @@ class SDRIdeaArrayDeserializer:
         value = round(value, 2)
 
         return value
-    
+
     def get_local_string_value(self, index):
         value = self.dictionary.words[str(index)]
         return value
-    
+
     def get_metadata_type(self, metadata_value):
         idea_metadata_values = IdeaMetadataValues()
         metadata_map = idea_metadata_values.get_metadata_map()
@@ -145,7 +159,7 @@ class SDRIdeaArrayDeserializer:
         metadata_value = int(self.dictionary.words[sdr[self.index]])
         self.index += 1
 
-        length = self.get_value_according_type(self.get_numeric_value(sdr), 'int')
+        length = self.get_value_according_type(self.get_numeric_value(sdr), "int")
 
         idea_metadata_values = IdeaMetadataValues()
         metadata_map = idea_metadata_values.get_metadata_map()
@@ -154,7 +168,9 @@ class SDRIdeaArrayDeserializer:
                 if ArrayValueValidation.is_array(clazz):
                     return self.get_array_value(sdr, length, clazz)
                 elif ArrayValueValidation.is_primitive(clazz):
-                    return self.get_value_according_type(self.get_numeric_value(sdr), clazz)
+                    return self.get_value_according_type(
+                        self.get_numeric_value(sdr), clazz
+                    )
                 elif ArrayValueValidation.is_string(clazz):
                     return self.get_string_value(sdr)
         return None
@@ -162,30 +178,38 @@ class SDRIdeaArrayDeserializer:
     def get_array_value(self, sdr, length, clazz):
         array = [None] * length
         for i in range(length):
-            if clazz == 'list_double' or clazz == 'list_float':
-                array[i] = self.get_value_according_type(self.get_numeric_value(sdr), 'float')
-            elif clazz == 'list_int':
-                array[i] = self.get_value_according_type(self.get_numeric_value(sdr), 'int')
-            elif clazz == 'list_short':
-                array[i] = self.get_value_according_type(self.get_numeric_value(sdr), 'short')
-            elif clazz == 'list_bool':
-                array[i] = self.get_string_value(sdr) == 'True'
-            elif clazz == 'list_long':
-                array[i] = self.get_value_according_type(self.get_numeric_value(sdr), 'long')
-            elif clazz == 'list_str':
+            if clazz == "list_double" or clazz == "list_float":
+                array[i] = self.get_value_according_type(
+                    self.get_numeric_value(sdr), "float"
+                )
+            elif clazz == "list_int":
+                array[i] = self.get_value_according_type(
+                    self.get_numeric_value(sdr), "int"
+                )
+            elif clazz == "list_short":
+                array[i] = self.get_value_according_type(
+                    self.get_numeric_value(sdr), "short"
+                )
+            elif clazz == "list_bool":
+                array[i] = self.get_string_value(sdr) == "True"
+            elif clazz == "list_long":
+                array[i] = self.get_value_according_type(
+                    self.get_numeric_value(sdr), "long"
+                )
+            elif clazz == "list_str":
                 array[i] = self.get_string_value(sdr)
         return array
 
     def get_value_according_type(self, value, clazz):
-        if clazz == 'int':
+        if clazz == "int":
             return int(value)
-        elif clazz == 'float':
+        elif clazz == "float":
             return float(value)
-        elif clazz == 'short':
+        elif clazz == "short":
             return int(value)  # Python does not have a native 'short' type
-        elif clazz == 'long':
+        elif clazz == "long":
             return int(value)
-        elif clazz == 'double':
+        elif clazz == "double":
             return float(value)
         else:
             return value
