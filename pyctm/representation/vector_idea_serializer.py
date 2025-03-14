@@ -4,7 +4,7 @@ from pyctm.representation.idea_metadata_values import IdeaMetadataValues
 from pyctm.representation.sdr_idea_array_builder import SDRIdeaArrayBuilder
 
 
-class SDRIdeaArraySerializer:
+class VectorIdeaSerializer:
     def __init__(self, total_of_ideas, total_of_values, default_value, dictionary=None):
         self.total_of_ideas = total_of_ideas
         self.total_of_values = total_of_values
@@ -20,7 +20,12 @@ class SDRIdeaArraySerializer:
             raise Exception("Idea Graph is null.")
 
         self.index = 0
-        sdr_idea_array = SDRIdeaArrayBuilder().build(self.total_of_ideas, self.total_of_values, self.default_value, self.start_word)
+        sdr_idea_array = SDRIdeaArrayBuilder().build(
+            self.total_of_ideas,
+            self.total_of_values,
+            self.default_value,
+            self.start_word,
+        )
         self.index += 1
 
         self.set_id_value(idea, sdr_idea_array.sdr)
@@ -67,16 +72,18 @@ class SDRIdeaArraySerializer:
 
     def set_metadata_value(self, idea, sdr):
         if idea.value is not None:
-            
+
             idea_metadata_values = IdeaMetadataValues()
 
             if isinstance(idea.value, list) and len(idea.value) > 0:
                 element_type = type(idea.value[0]).__name__
-                metadata_key = f'list_{element_type}'
+                metadata_key = f"list_{element_type}"
             else:
                 metadata_key = type(idea.value).__name__
 
-            metadata_value = idea_metadata_values.get_metadata_map().get(metadata_key, 0)
+            metadata_value = idea_metadata_values.get_metadata_map().get(
+                metadata_key, 0
+            )
             self.set_word(sdr, self.get_value_from_dictionary(str(metadata_value)))
 
             length = len(idea.value) if isinstance(idea.value, list) else 0
@@ -98,7 +105,9 @@ class SDRIdeaArraySerializer:
 
     def set_numeric_value(self, sdr, value):
         base_ten_value = self.value_converter.convert_number_to_base_ten(abs(value))
-        value_string = "{:.2f}".format(base_ten_value[0]).replace(".", "").replace("-", "")
+        value_string = (
+            "{:.2f}".format(base_ten_value[0]).replace(".", "").replace("-", "")
+        )
 
         for i in range(min(len(value_string), 3)):
             value_int = int(value_string[i])
@@ -113,7 +122,9 @@ class SDRIdeaArraySerializer:
         sdr[self.index] = base
         self.index += 1
 
-        base_signal = self.get_value_from_dictionary("+" if base_ten_value[1] >= 0 else "-")
+        base_signal = self.get_value_from_dictionary(
+            "+" if base_ten_value[1] >= 0 else "-"
+        )
         sdr[self.index] = base_signal
         self.index += 1
 

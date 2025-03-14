@@ -9,7 +9,7 @@ from pyctm.representation.array_value_converter import ArrayValueConverter
 from pyctm.representation.value_validation import ValueValidation
 
 
-class SDRIdeaArrayDeserializer:
+class VectorIdeaDeserializer:
     def __init__(self, dictionary):
         self.dictionary = dictionary
 
